@@ -12,29 +12,29 @@ def bias_variable(shape):
   return tf.Variable(initial)
 
 class ResidualBlock():
-    """Residual Block."""
-    def __init__(self, dim_in=256, dim_out=256):
+	"""Residual Block."""
+	def __init__(self, dim_in=256, dim_out=256):
 		self.residualBlock1_W = weight_variable([3, 3, dim_in, dim_out])
 		self.residualBlock1_b = bias_variable([dim_out])
 
 		self.residualBlock2_W = weight_variable([3, 3, dim_out, dim_out])
 		self.residualBlock2_b = bias_variable([dim_out])
 
-    def forward(self, x):
-    	Y1 = tf.nn.conv2d(x, self.residualBlock1_W, strides=[1, 1, 1, 1], padding='SAME') + self.residualBlock1_b
-    	Y1_norm = tf.contrib.layers.batch_norm(Y1)
+	def forward(self, x):
+		Y1 = tf.nn.conv2d(x, self.residualBlock1_W, strides=[1, 1, 1, 1], padding='SAME') + self.residualBlock1_b
+		Y1_norm = tf.contrib.layers.batch_norm(Y1)
 
-    	Y1_relu = tf.nn.relu(Y1_norm)
+		Y1_relu = tf.nn.relu(Y1_norm)
 
-    	Y2 = tf.nn.conv2d(Y1_relu, self.residualBlock2_W, strides=[1, 1, 1, 1], padding='SAME') + self.residualBlock2_b
-    	Y2_norm = tf.contrib.layers.batch_norm(Y2)
+		Y2 = tf.nn.conv2d(Y1_relu, self.residualBlock2_W, strides=[1, 1, 1, 1], padding='SAME') + self.residualBlock2_b
+		Y2_norm = tf.contrib.layers.batch_norm(Y2)
 
-        return x + Y2_norm
+		return x + Y2_norm
 
 
 class Generator():
 
-	def __init__(self, imgDim=(64,64), numClass=5):
+	def __init__(self, imgDim=(128,128), numClass=5):
 		# Weights initialised
 		self.imgDim = imgDim;
 
@@ -93,10 +93,20 @@ class Generator():
 
 		Y_upSampling3 = tf.nn.tanh(tf.nn.conv2d(Y_upSampling2_norm, self.upSampling3_W, strides=[1, 1, 1, 1], padding='SAME') + self.upSampling3_b)
 
+	def train_step(self, x, c, lr=0.0001):
+		# TODO: write this pseoudocode
+		fake = self.forward(...)
+		D.forward(fake)
+
+		recLoss = .....
+
+		# TODO: add decay
+		return train_step = tf.train.AdamOptimizer(learning_rate=lr, beta1=0.5, beta2=0.999).minimize(recLoss)
 
 
-class Discriminator():
+
+# class Discriminator():
     
-	def __init__(self, imageSize=128, convDim=64, numClass=5):
+# 	def __init__(self, imageSize=128, convDim=64, numClass=5):
 
-	def forward(self, x):
+# 	def forward(self, x):
