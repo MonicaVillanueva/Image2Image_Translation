@@ -4,12 +4,14 @@ import numpy as np
 # FLAG: use Instance normalization instead of batch normalization
 
 def weight_variable(shape):
-  initial = tf.truncated_normal(shape, stddev=0.1)
-  return tf.Variable(initial)
+	shape = [int(element) for element in shape]
+	initial = tf.truncated_normal(shape, stddev=0.1)
+	return tf.Variable(initial)
 
 def bias_variable(shape):
-  initial = tf.constant(0.1, shape=shape)
-  return tf.Variable(initial)
+	shape = [int(element) for element in shape]
+	initial = tf.constant(0.1, shape=shape)
+	return tf.Variable(initial)
 
 class ResidualBlock():
 	"""Residual Block."""
@@ -36,7 +38,7 @@ class Generator():
 
 	def __init__(self, imgDim=(128,128), numClass=5):
 		# Weights initialised
-		self.imgDim = imgDim;
+		self.imgDim = imgDim
 
 		self.downSampling1_W = weight_variable([7, 7, 3 + numClass, 64])
 		self.downSampling1_b = bias_variable([64])
@@ -47,12 +49,12 @@ class Generator():
 		self.downSampling3_W = weight_variable([4, 4, 128, 256])
 		self.downSampling3_b = bias_variable([256])
 
-		self.residualBlock1 = ResidualBlock();
-		self.residualBlock2 = ResidualBlock();
-		self.residualBlock3 = ResidualBlock();
-		self.residualBlock4 = ResidualBlock();
-		self.residualBlock5 = ResidualBlock();
-		self.residualBlock6 = ResidualBlock();
+		self.residualBlock1 = ResidualBlock()
+		self.residualBlock2 = ResidualBlock()
+		self.residualBlock3 = ResidualBlock()
+		self.residualBlock4 = ResidualBlock()
+		self.residualBlock5 = ResidualBlock()
+		self.residualBlock6 = ResidualBlock()
 
 		self.upSampling1_W = weight_variable([4, 4, 256, 128])
 		self.upSampling1_b = bias_variable([128])
@@ -96,17 +98,71 @@ class Generator():
 	def train_step(self, x, c, lr=0.0001):
 		# TODO: write this pseoudocode
 		fake = self.forward(...)
-		D.forward(fake)
+		#D.forward(fake)
 
-		recLoss = .....
+		#recLoss = .....
 
 		# TODO: add decay
-		return train_step = tf.train.AdamOptimizer(learning_rate=lr, beta1=0.5, beta2=0.999).minimize(recLoss)
+		#return train_step = tf.train.AdamOptimizer(learning_rate=lr, beta1=0.5, beta2=0.999).minimize(recLoss)
 
 
 
-# class Discriminator():
-    
-# 	def __init__(self, imageSize=128, convDim=64, numClass=5):
+class Discriminator():
 
-# 	def forward(self, x):
+	def __init__(self, imageSize=128, convDim=64, numClass=5):
+		# Weights initialised
+
+		self.imageSize = imageSize
+		currDim = convDim
+
+		self.InputLayer = weight_variable([4, 4, 3, currDim])
+		self.InputLayer_b = bias_variable([currDim])
+
+		self.HiddenLayer1 = weight_variable([4, 4, currDim, currDim*2])
+		self.HiddenLayer1_b = bias_variable([currDim*2])
+		currDim = currDim*2
+
+		self.HiddenLayer2 = weight_variable([4, 4, currDim, currDim*2])
+		self.HiddenLayer2_b = bias_variable([currDim*2])
+		currDim = currDim*2
+
+		self.HiddenLayer3 = weight_variable([4, 4, currDim, currDim*2])
+		self.HiddenLayer3_b = bias_variable([currDim*2])
+		currDim = currDim*2
+
+		self.HiddenLayer4 = weight_variable([4, 4, currDim, currDim*2])
+		self.HiddenLayer4_b = bias_variable([currDim*2])
+		currDim = currDim*2
+
+		self.HiddenLayer5 = weight_variable([4, 4, currDim, currDim*2])
+		self.HiddenLayer5_b = bias_variable([currDim*2])
+		currDim = currDim*2
+
+		self.OutputLayerSrc = weight_variable([3, 3, currDim, 1])
+		self.OutputLayerSrc_b = bias_variable([1])
+
+		self.OutputLayerCls = weight_variable([imageSize/64, imageSize/64, currDim, numClass])
+		self.OutputLayerCls_b = bias_variable([numClass])
+
+
+		# Pipes connections
+		self.X = tf.placeholder(tf.float32, shape=[None, self.imageSize, self.imageSize, 3])
+		self.Y_input = tf.nn.leaky_relu(tf.nn.conv2d(self.X, self.InputLayer, strides=[1, 2, 2, 1], padding='SAME') + self.InputLayer_b)
+		self.Y_hiddenLayer1 = tf.nn.leaky_relu(tf.nn.conv2d(self.Y_input, self.HiddenLayer1, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer1_b)
+		self.Y_hiddenLayer2 = tf.nn.leaky_relu(tf.nn.conv2d(self.Y_hiddenLayer1, self.HiddenLayer2, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer2_b)
+		self.Y_hiddenLayer3 = tf.nn.leaky_relu(tf.nn.conv2d(self.Y_hiddenLayer2, self.HiddenLayer3, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer3_b)
+		self.Y_hiddenLayer4 = tf.nn.leaky_relu(tf.nn.conv2d(self.Y_hiddenLayer3, self.HiddenLayer4, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer4_b)
+		self.Y_hiddenLayer5 = tf.nn.leaky_relu(tf.nn.conv2d(self.Y_hiddenLayer4, self.HiddenLayer5, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer5_b)
+
+		self.Y_outputLayerSrc = tf.nn.conv2d(self.Y_hiddenLayer5, self.OutputLayerSrc, strides=[1, 1, 1, 1],padding='SAME') + self.OutputLayerSrc_b
+		self.Y_outputLayerCls = tf.nn.conv2d(self.Y_hiddenLayer5, self.OutputLayerCls,strides=[1, 1, 1, 1], padding='VALID') + self.OutputLayerCls_b# TODO padding in YCls should BE "TYPE1"
+
+		#session initialization
+		self.init = tf.initialize_all_variables()
+		self.sess = tf.Session()
+		self.sess.run(self.init)
+
+
+	def forward(self, x):
+		YSrc, YCls = self.sess.run([self.Y_outputLayerSrc, self.Y_outputLayerCls], feed_dict={self.X: x})
+		return YSrc.squeeze(), YCls.squeeze()
