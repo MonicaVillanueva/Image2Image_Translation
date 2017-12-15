@@ -37,6 +37,7 @@ class ResidualBlock():
 class Generator():
 
 	def __init__(self, imgDim=(128,128), numClass=5):
+		self.imgDim = imgDim
 		# Weights initialised
 		self.downSampling1_W = weight_variable([7, 7, 3 + numClass, 64])
 		self.downSampling1_b = bias_variable([64])
@@ -64,38 +65,38 @@ class Generator():
 		self.upSampling3_b = bias_variable([3])
 
 		# Pipes connections
-		self.X_G = tf.placeholder(tf.float32, shape=[None, imgDim[0], imgDim[1], 3 + numClass])
-		batch_size = tf.shape(self.X_G)[0]
+		# self.X_G = tf.placeholder(tf.float32, shape=[None, imgDim[0], imgDim[1], 3 + numClass])
 
-		self.Y_downSampling1 = tf.nn.relu(tf.nn.conv2d(self.X_G, self.downSampling1_W, strides=[1, 1, 1, 1], padding='SAME') + self.downSampling1_b)
-		self.Y_downSampling1_norm = tf.contrib.layers.batch_norm(self.Y_downSampling1)
+	def forward(self, X_G):
+		batch_size = tf.shape(X_G)[0]
 
-		self.Y_downSampling2 = tf.nn.relu(tf.nn.conv2d(self.Y_downSampling1_norm, self.downSampling2_W, strides=[1, 2, 2, 1], padding='SAME') + self.downSampling2_b)
-		self.Y_downSampling2_norm = tf.contrib.layers.batch_norm(self.Y_downSampling2)
+		Y_downSampling1 = tf.nn.relu(tf.nn.conv2d(X_G, self.downSampling1_W, strides=[1, 1, 1, 1], padding='SAME') + self.downSampling1_b)
+		Y_downSampling1_norm = tf.contrib.layers.batch_norm(Y_downSampling1)
 
-		self.Y_downSampling3 = tf.nn.relu(tf.nn.conv2d(self.Y_downSampling2_norm, self.downSampling3_W, strides=[1, 2, 2, 1], padding='SAME') + self.downSampling3_b)
-		self.Y_downSampling3_norm = tf.contrib.layers.batch_norm(self.Y_downSampling3)
+		Y_downSampling2 = tf.nn.relu(tf.nn.conv2d(Y_downSampling1_norm, self.downSampling2_W, strides=[1, 2, 2, 1], padding='SAME') + self.downSampling2_b)
+		Y_downSampling2_norm = tf.contrib.layers.batch_norm(Y_downSampling2)
+
+		Y_downSampling3 = tf.nn.relu(tf.nn.conv2d(Y_downSampling2_norm, self.downSampling3_W, strides=[1, 2, 2, 1], padding='SAME') + self.downSampling3_b)
+		Y_downSampling3_norm = tf.contrib.layers.batch_norm(Y_downSampling3)
 
 		
-		self.Y_residual1 = self.residualBlock1.forward(self.Y_downSampling3_norm)
-		self.Y_residual2 = self.residualBlock2.forward(self.Y_residual1)
-		self.Y_residual3 = self.residualBlock3.forward(self.Y_residual2)
-		self.Y_residual4 = self.residualBlock4.forward(self.Y_residual3)
-		self.Y_residual5 = self.residualBlock5.forward(self.Y_residual4)
-		self.Y_residual6 = self.residualBlock6.forward(self.Y_residual5)
+		Y_residual1 = self.residualBlock1.forward(Y_downSampling3_norm)
+		Y_residual2 = self.residualBlock2.forward(Y_residual1)
+		Y_residual3 = self.residualBlock3.forward(Y_residual2)
+		Y_residual4 = self.residualBlock4.forward(Y_residual3)
+		Y_residual5 = self.residualBlock5.forward(Y_residual4)
+		Y_residual6 = self.residualBlock6.forward(Y_residual5)
 
 
-		self.Y_upSampling1 = tf.nn.relu(tf.nn.conv2d_transpose(self.Y_residual6, self.upSampling1_W, [batch_size, int(imgDim[0]/2), int(imgDim[1]/2),128], strides=[1, 2, 2, 1], padding='SAME') + self.upSampling1_b)
-		self.Y_upSampling1_norm = tf.contrib.layers.batch_norm(self.Y_upSampling1)
+		Y_upSampling1 = tf.nn.relu(tf.nn.conv2d_transpose(Y_residual6, self.upSampling1_W, [batch_size, int(self.imgDim[0]/2), int(self.imgDim[1]/2),128], strides=[1, 2, 2, 1], padding='SAME') + self.upSampling1_b)
+		Y_upSampling1_norm = tf.contrib.layers.batch_norm(Y_upSampling1)
 
-		self.Y_upSampling2 = tf.nn.relu(tf.nn.conv2d_transpose(self.Y_upSampling1_norm, self.upSampling2_W, [batch_size, imgDim[0], imgDim[1],64], strides=[1, 2, 2, 1], padding='SAME') + self.upSampling2_b)
-		self.Y_upSampling2_norm = tf.contrib.layers.batch_norm(self.Y_upSampling2)
+		Y_upSampling2 = tf.nn.relu(tf.nn.conv2d_transpose(Y_upSampling1_norm, self.upSampling2_W, [batch_size, self.imgDim[0], self.imgDim[1],64], strides=[1, 2, 2, 1], padding='SAME') + self.upSampling2_b)
+		Y_upSampling2_norm = tf.contrib.layers.batch_norm(Y_upSampling2)
 
-		self.fakeGeneration = tf.nn.tanh(tf.nn.conv2d(self.Y_upSampling2_norm, self.upSampling3_W, strides=[1, 1, 1, 1], padding='SAME') + self.upSampling3_b)
+		fakeGeneration = tf.nn.tanh(tf.nn.conv2d(Y_upSampling2_norm, self.upSampling3_W, strides=[1, 1, 1, 1], padding='SAME') + self.upSampling3_b)
 
-
-	def forward(self):
-		return self.fakeGeneration
+		return fakeGeneration
 
 
 class Discriminator():
@@ -137,12 +138,12 @@ class Discriminator():
 
 	def forward(self, x):
 		# x has to be a placeHolder or conexion with generator output
-		Y_input = tf.nn.leaky_relu(tf.nn.conv2d(x, self.InputLayer, strides=[1, 2, 2, 1], padding='SAME') + self.InputLayer_b)
-		Y_hiddenLayer1 = tf.nn.leaky_relu(tf.nn.conv2d(Y_input, self.HiddenLayer1, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer1_b)
-		Y_hiddenLayer2 = tf.nn.leaky_relu(tf.nn.conv2d(Y_hiddenLayer1, self.HiddenLayer2, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer2_b)
-		Y_hiddenLayer3 = tf.nn.leaky_relu(tf.nn.conv2d(Y_hiddenLayer2, self.HiddenLayer3, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer3_b)
-		Y_hiddenLayer4 = tf.nn.leaky_relu(tf.nn.conv2d(Y_hiddenLayer3, self.HiddenLayer4, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer4_b)
-		Y_hiddenLayer5 = tf.nn.leaky_relu(tf.nn.conv2d(Y_hiddenLayer4, self.HiddenLayer5, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer5_b)
+		Y_input = tf.nn.relu(tf.nn.conv2d(x, self.InputLayer, strides=[1, 2, 2, 1], padding='SAME') + self.InputLayer_b)
+		Y_hiddenLayer1 = tf.nn.relu(tf.nn.conv2d(Y_input, self.HiddenLayer1, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer1_b)
+		Y_hiddenLayer2 = tf.nn.relu(tf.nn.conv2d(Y_hiddenLayer1, self.HiddenLayer2, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer2_b)
+		Y_hiddenLayer3 = tf.nn.relu(tf.nn.conv2d(Y_hiddenLayer2, self.HiddenLayer3, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer3_b)
+		Y_hiddenLayer4 = tf.nn.relu(tf.nn.conv2d(Y_hiddenLayer3, self.HiddenLayer4, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer4_b)
+		Y_hiddenLayer5 = tf.nn.relu(tf.nn.conv2d(Y_hiddenLayer4, self.HiddenLayer5, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer5_b)
 
 		Y_outputLayerSrc = tf.nn.conv2d(Y_hiddenLayer5, self.OutputLayerSrc, strides=[1, 1, 1, 1],padding='SAME') + self.OutputLayerSrc_b
 		Y_outputLayerCls = tf.nn.conv2d(Y_hiddenLayer5, self.OutputLayerCls,strides=[1, 1, 1, 1], padding='VALID') + self.OutputLayerCls_b# TODO padding in YCls should BE "TYPE1"

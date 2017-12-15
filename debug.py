@@ -24,13 +24,18 @@ G = Generator()
 D = Discriminator()
 
 # Generator Losses
+imagesWithFakeLabelsT = tf.placeholder(tf.float32, shape=[None, imgDim, imgDim, 3 + numClass])
+fakeWithRealLabelsT = tf.placeholder(tf.float32, shape=[None, imgDim, imgDim, 3 + numClass])
+fakeGeneration = G.forward(imagesWithFakeLabelsT)
+recGeneration = G.forward(fakeWithRealLabelsT)
 real = tf.placeholder(tf.float32, shape=[None, imgDim, imgDim, 3])
-recLossG = tf.reduce_mean(tf.abs(real - G.fakeGeneration))
+recLossG = tf.reduce_mean(tf.abs(real - recGeneration))
 
-Y_outputLayerSrc_Fake, Y_outputLayerCls_Fake = D.forward(G.fakeGeneration)
+Y_outputLayerSrc_Fake, Y_outputLayerCls_Fake = D.forward(fakeGeneration)
 # TODO: Dcls_Fake = ...
+Dadv_fake = - tf.reduce_mean(Y_outputLayerSrc_Fake)
 
-gLoss = recLossG #+ Dcls_Fake
+gLoss = recLossG + Dadv_fake #+ Dcls_Fake
 
 # Discrimintar losses
 # X_D = tf.placeholder(tf.float32, shape=[None, imageSize, imageSize, 3])
@@ -70,10 +75,10 @@ for filename in os.listdir(path):
 		# TODO: only each 5th time
 		# X_G has to contain the original image with the labels to generate concatenated
 		imagesWithFakeLabels = stackLabels(images, np.random.randint(2, size=(batchSize, numClass)))
-		fake = sess.run(G.fakeGeneration, feed_dict={G.X_G: imagesWithFakeLabels})
+		fake = sess.run(fakeGeneration, feed_dict={imagesWithFakeLabelsT: imagesWithFakeLabels})
 		fakeWithRealLabels = stackLabels(fake, trueLabels)
 
-		loss, _ = sess.run([gLoss, train_G], feed_dict={lr: learningRate, G.X_G: fakeWithRealLabels, real: np.stack(images)})
+		loss, _ = sess.run([gLoss, train_G], feed_dict={lr: learningRate, fakeWithRealLabelsT: fakeWithRealLabels, imagesWithFakeLabelsT: imagesWithFakeLabels, real: np.stack(images)})
 
 
 		pdb.set_trace()
