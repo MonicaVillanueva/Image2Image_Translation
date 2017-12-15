@@ -64,10 +64,10 @@ class Generator():
 		self.upSampling3_b = bias_variable([3])
 
 		# Pipes connections
-		self.X = tf.placeholder(tf.float32, shape=[None, imgDim[0], imgDim[1], 3 + numClass])
-		batch_size = tf.shape(self.X)[0]
+		self.X_G = tf.placeholder(tf.float32, shape=[None, imgDim[0], imgDim[1], 3 + numClass])
+		batch_size = tf.shape(self.X_G)[0]
 
-		self.Y_downSampling1 = tf.nn.relu(tf.nn.conv2d(self.X, self.downSampling1_W, strides=[1, 1, 1, 1], padding='SAME') + self.downSampling1_b)
+		self.Y_downSampling1 = tf.nn.relu(tf.nn.conv2d(self.X_G, self.downSampling1_W, strides=[1, 1, 1, 1], padding='SAME') + self.downSampling1_b)
 		self.Y_downSampling1_norm = tf.contrib.layers.batch_norm(self.Y_downSampling1)
 
 		self.Y_downSampling2 = tf.nn.relu(tf.nn.conv2d(self.Y_downSampling1_norm, self.downSampling2_W, strides=[1, 2, 2, 1], padding='SAME') + self.downSampling2_b)
@@ -91,30 +91,11 @@ class Generator():
 		self.Y_upSampling2 = tf.nn.relu(tf.nn.conv2d_transpose(self.Y_upSampling1_norm, self.upSampling2_W, [batch_size, imgDim[0], imgDim[1],64], strides=[1, 2, 2, 1], padding='SAME') + self.upSampling2_b)
 		self.Y_upSampling2_norm = tf.contrib.layers.batch_norm(self.Y_upSampling2)
 
-		self.Y_upSampling3 = tf.nn.tanh(tf.nn.conv2d(self.Y_upSampling2_norm, self.upSampling3_W, strides=[1, 1, 1, 1], padding='SAME') + self.upSampling3_b)
-
-		# Session initialization
-		self.init = tf.initialize_all_variables()
-		self.sess = tf.Session()
-		self.sess.run(self.init)
+		self.fakeGeneration = tf.nn.tanh(tf.nn.conv2d(self.Y_upSampling2_norm, self.upSampling3_W, strides=[1, 1, 1, 1], padding='SAME') + self.upSampling3_b)
 
 
-	def forward(self, x, labels):
-		# x has to contain already the labels concatenated
-		fake = self.sess.run(self.Y_upSampling3, feed_dict={self.X: x})
-		return fake
-		
-
-	def train_step(self, x, c, lr=0.0001):
-		# TODO: write this pseoudocode
-		fake = self.forward(...)
-		#D.forward(fake)
-
-		#recLoss = .....
-
-		# TODO: add decay
-		#return train_step = tf.train.AdamOptimizer(learning_rate=lr, beta1=0.5, beta2=0.999).minimize(recLoss)
-
+	def forward(self):
+		return self.fakeGeneration
 
 
 class Discriminator():
@@ -154,25 +135,16 @@ class Discriminator():
 		self.OutputLayerCls = weight_variable([imageSize/64, imageSize/64, currDim, numClass])
 		self.OutputLayerCls_b = bias_variable([numClass])
 
-
-		# Pipes connections
-		self.X = tf.placeholder(tf.float32, shape=[None, self.imageSize, self.imageSize, 3])
-		self.Y_input = tf.nn.leaky_relu(tf.nn.conv2d(self.X, self.InputLayer, strides=[1, 2, 2, 1], padding='SAME') + self.InputLayer_b)
-		self.Y_hiddenLayer1 = tf.nn.leaky_relu(tf.nn.conv2d(self.Y_input, self.HiddenLayer1, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer1_b)
-		self.Y_hiddenLayer2 = tf.nn.leaky_relu(tf.nn.conv2d(self.Y_hiddenLayer1, self.HiddenLayer2, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer2_b)
-		self.Y_hiddenLayer3 = tf.nn.leaky_relu(tf.nn.conv2d(self.Y_hiddenLayer2, self.HiddenLayer3, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer3_b)
-		self.Y_hiddenLayer4 = tf.nn.leaky_relu(tf.nn.conv2d(self.Y_hiddenLayer3, self.HiddenLayer4, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer4_b)
-		self.Y_hiddenLayer5 = tf.nn.leaky_relu(tf.nn.conv2d(self.Y_hiddenLayer4, self.HiddenLayer5, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer5_b)
-
-		self.Y_outputLayerSrc = tf.nn.conv2d(self.Y_hiddenLayer5, self.OutputLayerSrc, strides=[1, 1, 1, 1],padding='SAME') + self.OutputLayerSrc_b
-		self.Y_outputLayerCls = tf.nn.conv2d(self.Y_hiddenLayer5, self.OutputLayerCls,strides=[1, 1, 1, 1], padding='VALID') + self.OutputLayerCls_b# TODO padding in YCls should BE "TYPE1"
-
-		#session initialization
-		self.init = tf.initialize_all_variables()
-		self.sess = tf.Session()
-		self.sess.run(self.init)
-
-
 	def forward(self, x):
-		YSrc, YCls = self.sess.run([self.Y_outputLayerSrc, self.Y_outputLayerCls], feed_dict={self.X: x})
-		return YSrc.squeeze(), YCls.squeeze()
+		# x has to be a placeHolder or conexion with generator output
+		Y_input = tf.nn.leaky_relu(tf.nn.conv2d(x, self.InputLayer, strides=[1, 2, 2, 1], padding='SAME') + self.InputLayer_b)
+		Y_hiddenLayer1 = tf.nn.leaky_relu(tf.nn.conv2d(Y_input, self.HiddenLayer1, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer1_b)
+		Y_hiddenLayer2 = tf.nn.leaky_relu(tf.nn.conv2d(Y_hiddenLayer1, self.HiddenLayer2, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer2_b)
+		Y_hiddenLayer3 = tf.nn.leaky_relu(tf.nn.conv2d(Y_hiddenLayer2, self.HiddenLayer3, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer3_b)
+		Y_hiddenLayer4 = tf.nn.leaky_relu(tf.nn.conv2d(Y_hiddenLayer3, self.HiddenLayer4, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer4_b)
+		Y_hiddenLayer5 = tf.nn.leaky_relu(tf.nn.conv2d(Y_hiddenLayer4, self.HiddenLayer5, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer5_b)
+
+		Y_outputLayerSrc = tf.nn.conv2d(Y_hiddenLayer5, self.OutputLayerSrc, strides=[1, 1, 1, 1],padding='SAME') + self.OutputLayerSrc_b
+		Y_outputLayerCls = tf.nn.conv2d(Y_hiddenLayer5, self.OutputLayerCls,strides=[1, 1, 1, 1], padding='VALID') + self.OutputLayerCls_b# TODO padding in YCls should BE "TYPE1"
+
+		return Y_outputLayerSrc, Y_outputLayerCls
