@@ -38,8 +38,6 @@ class Generator():
 
 	def __init__(self, imgDim=(128,128), numClass=5):
 		# Weights initialised
-		self.imgDim = imgDim
-
 		self.downSampling1_W = weight_variable([7, 7, 3 + numClass, 64])
 		self.downSampling1_b = bias_variable([64])
 
@@ -56,44 +54,56 @@ class Generator():
 		self.residualBlock5 = ResidualBlock()
 		self.residualBlock6 = ResidualBlock()
 
-		self.upSampling1_W = weight_variable([4, 4, 256, 128])
+		self.upSampling1_W = weight_variable([4, 4, 128, 256])
 		self.upSampling1_b = bias_variable([128])
 
-		self.upSampling2_W = weight_variable([4, 4, 128, 64])
+		self.upSampling2_W = weight_variable([4, 4, 64, 128])
 		self.upSampling2_b = bias_variable([64])
 
 		self.upSampling3_W = weight_variable([7, 7, 64, 3])
 		self.upSampling3_b = bias_variable([3])
 
+		# Pipes connections
+		self.X = tf.placeholder(tf.float32, shape=[None, imgDim[0], imgDim[1], 3 + numClass])
+		batch_size = tf.shape(self.X)[0]
 
-	def forward(self, x, c):
+		self.Y_downSampling1 = tf.nn.relu(tf.nn.conv2d(self.X, self.downSampling1_W, strides=[1, 1, 1, 1], padding='SAME') + self.downSampling1_b)
+		self.Y_downSampling1_norm = tf.contrib.layers.batch_norm(self.Y_downSampling1)
+
+		self.Y_downSampling2 = tf.nn.relu(tf.nn.conv2d(self.Y_downSampling1_norm, self.downSampling2_W, strides=[1, 2, 2, 1], padding='SAME') + self.downSampling2_b)
+		self.Y_downSampling2_norm = tf.contrib.layers.batch_norm(self.Y_downSampling2)
+
+		self.Y_downSampling3 = tf.nn.relu(tf.nn.conv2d(self.Y_downSampling2_norm, self.downSampling3_W, strides=[1, 2, 2, 1], padding='SAME') + self.downSampling3_b)
+		self.Y_downSampling3_norm = tf.contrib.layers.batch_norm(self.Y_downSampling3)
+
+		
+		self.Y_residual1 = self.residualBlock1.forward(self.Y_downSampling3_norm)
+		self.Y_residual2 = self.residualBlock2.forward(self.Y_residual1)
+		self.Y_residual3 = self.residualBlock3.forward(self.Y_residual2)
+		self.Y_residual4 = self.residualBlock4.forward(self.Y_residual3)
+		self.Y_residual5 = self.residualBlock5.forward(self.Y_residual4)
+		self.Y_residual6 = self.residualBlock6.forward(self.Y_residual5)
+
+
+		self.Y_upSampling1 = tf.nn.relu(tf.nn.conv2d_transpose(self.Y_residual6, self.upSampling1_W, [batch_size, int(imgDim[0]/2), int(imgDim[1]/2),128], strides=[1, 2, 2, 1], padding='SAME') + self.upSampling1_b)
+		self.Y_upSampling1_norm = tf.contrib.layers.batch_norm(self.Y_upSampling1)
+
+		self.Y_upSampling2 = tf.nn.relu(tf.nn.conv2d_transpose(self.Y_upSampling1_norm, self.upSampling2_W, [batch_size, imgDim[0], imgDim[1],64], strides=[1, 2, 2, 1], padding='SAME') + self.upSampling2_b)
+		self.Y_upSampling2_norm = tf.contrib.layers.batch_norm(self.Y_upSampling2)
+
+		self.Y_upSampling3 = tf.nn.tanh(tf.nn.conv2d(self.Y_upSampling2_norm, self.upSampling3_W, strides=[1, 1, 1, 1], padding='SAME') + self.upSampling3_b)
+
+		# Session initialization
+		self.init = tf.initialize_all_variables()
+		self.sess = tf.Session()
+		self.sess.run(self.init)
+
+
+	def forward(self, x, labels):
 		# x has to contain already the labels concatenated
-
-		X = tf.placeholder(tf.float32, shape=[None, self.imgDim[0], self.imgDim[1], len(c)])
-
-		Y_downSampling1 = tf.nn.relu(tf.nn.conv2d(X, self.downSampling1_W, strides=[1, 1, 1, 1], padding='SAME') + self.downSampling1_b)
-		Y_downSampling1_norm = tf.contrib.layers.batch_norm(Y_downSampling1)
-
-		Y_downSampling2 = tf.nn.relu(tf.nn.conv2d(Y_downSampling1_norm, self.downSampling2_W, strides=[1, 2, 2, 1], padding='SAME') + self.downSampling2_b)
-		Y_downSampling2_norm = tf.contrib.layers.batch_norm(Y_downSampling2)
-
-		Y_downSampling3 = tf.nn.relu(tf.nn.conv2d(Y_downSampling2_norm, self.downSampling3_W, strides=[1, 2, 2, 1], padding='SAME') + self.downSampling3_b)
-		Y_downSampling3_norm = tf.contrib.layers.batch_norm(Y_downSampling3)
-
-		Y_residual1 = self.residualBlock1.forward(Y_downSampling3_norm)
-		Y_residual2 = self.residualBlock2.forward(Y_residual1)
-		Y_residual3 = self.residualBlock3.forward(Y_residual2)
-		Y_residual4 = self.residualBlock4.forward(Y_residual3)
-		Y_residual5 = self.residualBlock5.forward(Y_residual4)
-		Y_residual6 = self.residualBlock6.forward(Y_residual5)
-
-		Y_upSampling1 = tf.nn.relu(tf.nn.conv2d_transpose(Y_residual6, self.upSampling1_W, strides=[1, 2, 2, 1], padding='SAME') + self.upSampling1_b)
-		Y_upSampling1_norm = tf.contrib.layers.batch_norm(Y_upSampling1)
-
-		Y_upSampling2 = tf.nn.relu(tf.nn.conv2d_transpose(Y_upSampling1_norm, self.upSampling2_W, strides=[1, 2, 2, 1], padding='SAME') + self.upSampling2_b)
-		Y_upSampling2_norm = tf.contrib.layers.batch_norm(Y_upSampling2)
-
-		Y_upSampling3 = tf.nn.tanh(tf.nn.conv2d(Y_upSampling2_norm, self.upSampling3_W, strides=[1, 1, 1, 1], padding='SAME') + self.upSampling3_b)
+		fake = self.sess.run(self.Y_upSampling3, feed_dict={self.X: x})
+		return fake
+		
 
 	def train_step(self, x, c, lr=0.0001):
 		# TODO: write this pseoudocode
