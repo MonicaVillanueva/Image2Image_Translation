@@ -31,9 +31,6 @@ Dataset
 Instead of using two datasets, we are simplifying the problem by using only one. In this case, the selected dataset is [CelebA](http://mmlab.ie.cuhk.edu.hk/projects/CelebA.html).
 We will train only a handful of the features that this dataset provides, namely hair color (black/blond/brown), gender (male/female) and age (young/old).
 
-n general, and contrary to most usual machine learning projects, this project does not require the use of an extensive dataset. Instead, we will only make use of “original photographies”, that we desire to transform, and “painting images”, that will provide the style the characteristics of which we want to extract.
-Therefore, and in order to facilitate the final qualitative evaluation, we will make use of the same or similar photographies and paintings used in the paper mentioned above.
-
 Libraries
 -------
 The code will be developed employing **Tensor Flow**, an open library for machine learning originally created by Google.
