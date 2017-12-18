@@ -24,9 +24,9 @@ class Pipeline():
         self.realX = tf.placeholder(tf.float32, [None, self.imgDim, self.imgDim, 3], name="realX")
         self.realX_fakeLabels = tf.placeholder(tf.float32, [None, self.imgDim, self.imgDim, 3 + self.numClass], name="realX_fakeLabels")
 
-        self.realLabels = tf.placeholder(tf.float32, [None, 1, 1, self.numClass], name="realLabels") # same size as YCls_real
+        self.realLabels = tf.placeholder(tf.float32, [None, 1, self.numClass], name="realLabels")
         self.realLabelsOneHot = tf.placeholder(tf.float32, [None, self.imgDim, self.imgDim, self.numClass], name="realLabelsOneHot")
-        self.fakeLabels = tf.placeholder(tf.float32, [None, 1, 1, self.numClass], name="fakeLabels")
+        self.fakeLabels = tf.placeholder(tf.float32, [None, self.numClass], name="fakeLabels")
 
         self.lrD = tf.placeholder(tf.float32)
         self.lrG = tf.placeholder(tf.float32)
@@ -40,6 +40,9 @@ class Pipeline():
         recX = self.Gen.recForward(self.fakeX, self.realLabelsOneHot)
         YSrc_real, YCls_real = self.Dis.forward(self.realX)
         YSrc_fake, YCls_fake = self.Dis.forward(self.fakeX)
+
+        YCls_real = tf.squeeze(YCls_fake)  # remove void dimensions
+        YCls_fake = tf.squeeze(YCls_fake) # remove void dimensions
 
 
 
@@ -60,7 +63,7 @@ class Pipeline():
 
         # Create D training pipeline
         g_loss_adv = - tf.reduce_mean(YSrc_fake) # TODO: review this
-        g_loss_cls = tf.nn.sigmoid_cross_entropy_with_logits(labels=YCls_fake,logits=self.fakeLabels) / self.batchSize
+        g_loss_cls = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=YCls_fake,logits=self.fakeLabels)) / self.batchSize
         g_loss_rec = tf.reduce_mean(tf.abs(self.realX - recX))
 
         self.g_loss = g_loss_adv + self.lambdaCls * g_loss_cls + self.lambdaRec * g_loss_rec
@@ -95,8 +98,8 @@ class Pipeline():
                 imagesWithFakeLabels = stackLabels(images, randomLabels)
 
                 # Reformat randomLabels to fit feeder
-                randomLabels = np.expand_dims(randomLabels, axis=1)
-                randomLabels = np.expand_dims(randomLabels, axis=1)
+                # randomLabels = np.expand_dims(randomLabels, axis=1)
+                # randomLabels = np.expand_dims(randomLabels, axis=1)
 
                 loss, _ = self.sess.run([self.g_loss, self.train_G],
                                         feed_dict={self.lrG: self.learningRateG,
