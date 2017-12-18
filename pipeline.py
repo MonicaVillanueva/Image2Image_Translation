@@ -6,47 +6,61 @@ import os
 from model import Generator, Discriminator
 from ast import literal_eval
 from utils import stackLabels
-from model import weight_variable, bias_variable
+
 class Pipeline():
-    def __init__(self, config):
-        self.param1 = config.parameter1
-        self.param2 = config.parameter2
-        self.lr = 0.1
-        self.DBpath = 'D:/processed'
+    def __init__(self):
+        self.learningRateD = 0.1
+        self.learningRateG = 0.0001
+        self.DBpath = 'processed'
         self.imgDim = 128
         self.batchSize = 16
         self.numClass = 5
 
     def init_model(self):
-
-        # Initialize optimizers
-        #self.train_G = tf.train.AdamOptimizer(learning_rate=self.lr, beta1=0.5, beta2=0.999)
-        #self.train_D = tf.train.AdamOptimizer(learning_rate=self.lr, beta1=0.5, beta2=0.999)
-
         #create the whole training graph
         self.realX = tf.placeholder(tf.float32, [None, self.imgDim, self.imgDim, 3], name="realX")
         self.realX_fakeLabels = tf.placeholder(tf.float32, [None, self.imgDim, self.imgDim, 3 + self.numClass], name="realX_fakeLabels")
-        self.realLabels = tf.placeholder(tf.float32, [None, 1, 1, self.numClass], name="realLabels")
+        self.fakeX_realLabels = tf.placeholder(tf.float32, shape=[None, self.imgDim, self.imgDim, 3 + self.numClass], name="fakeX_realLabels")
+        self.realLabels = tf.placeholder(tf.float32, [None, 1, self.numClass], name="realLabels")
+        self.lrD = tf.placeholder(tf.float32)
+        self.lrG = tf.placeholder(tf.float32)
 
         # Initilize the generator and discriminator
         self.Gen = Generator()
         self.Dis = Discriminator()
 
-        #create D training pipeline
-        YSrc1, YCls1 =self.Dis.forward(self.realX)
-        d_loss_real = tf.reduce_mean(YSrc1)
+        # Get outputs
+        self.fakeX = self.Gen.forward(self.realX_fakeLabels)
+        recX = self.Gen.forward(self.fakeX_realLabels)
+        YSrc_real, YCls_real =self.Dis.forward(self.realX)
+        YSrc_fake, YCls_fake =self.Dis.forward(self.fakeX)
 
 
-        fakeX = self.Gen.forward(self.realX_fakeLabels)
-        YSrc2, YCls2 =self.Dis.forward(fakeX)
-        d_loss_fake = tf.reduce_mean(YSrc2)
 
+        # Create D training pipeline
+        
+        d_loss_real = tf.reduce_mean(YSrc_real)
+        
+        d_loss_fake = tf.reduce_mean(YSrc_fake)
 
-        d_loss_cls = tf.nn.softmax_cross_entropy_with_logits(labels=YCls1,logits=self.realLabels, name="d_loss_cls")
+        d_loss_cls = tf.nn.softmax_cross_entropy_with_logits(labels=YCls_real,logits=self.realLabels, name="d_loss_cls")
 
         d_loss = d_loss_real + d_loss_fake + d_loss_cls
 
+        #TODO: add D train step
+        # self.train_D = tf.train.AdamOptimizer(
 
+        # Create D training pipeline
+        recLossG = tf.reduce_mean(tf.abs(self.realX - recX))
+
+        # TODO: Dcls_Fake = ...
+
+        # TODO: review this
+        Dadv_fake = - tf.reduce_mean(YSrc_fake)
+
+        self.gLoss = recLossG + Dadv_fake #+ Dcls_Fake
+
+        self.train_G = tf.train.AdamOptimizer(learning_rate=self.lrG, beta1=0.5, beta2=0.999).minimize(self.gLoss)
 
 
         #TF session
@@ -61,8 +75,8 @@ class Pipeline():
         images = []
         trueLabels = []
 
+        # TODO: for n batches
         for filename in os.listdir(self.DBpath):
-            # ??? Normalize images??
             img = sci.imread(os.path.join(self.DBpath, filename))
             splits = filename.split('_')
             trueLabels.append(literal_eval(splits[1].split('.')[0]))
@@ -73,12 +87,12 @@ class Pipeline():
                 # TODO: only each 5th time
                 # X_G has to contain the original image with the labels to generate concatenated
                 imagesWithFakeLabels = stackLabels(images, np.random.randint(2, size=(self.batchSize, self.numClass)))
-                fake = sess.run(fakeGeneration, feed_dict={imagesWithFakeLabelsT: imagesWithFakeLabels})
+                fake = self.sess.run(self.fakeX, feed_dict={self.realX_fakeLabels: imagesWithFakeLabels})
                 fakeWithRealLabels = stackLabels(fake, trueLabels)
 
-                loss, _ = sess.run([gLoss, train_G],
-                                   feed_dict={lr: learningRate, fakeWithRealLabelsT: fakeWithRealLabels,
-                                              imagesWithFakeLabelsT: imagesWithFakeLabels, real: np.stack(images)})
+                loss, _ = self.sess.run([self.gLoss, self.train_G],
+                                   feed_dict={self.lrG: self.learningRateG, self.fakeX_realLabels: fakeWithRealLabels,
+                                              self.realX_fakeLabels: imagesWithFakeLabels, self.realX: np.stack(images)})
 
                 pdb.set_trace()
                 images = []
@@ -86,3 +100,7 @@ class Pipeline():
 
     def test(self):
         pass
+
+p = Pipeline()
+p.init_model()
+p.train()

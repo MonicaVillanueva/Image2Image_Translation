@@ -138,12 +138,12 @@ class Discriminator():
 
 	def forward(self, x):
 		# x has to be a placeHolder or conexion with generator output
-		Y_input = tf.nn.relu(tf.nn.conv2d(x, self.InputLayer, strides=[1, 2, 2, 1], padding='SAME') + self.InputLayer_b)
-		Y_hiddenLayer1 = tf.nn.relu(tf.nn.conv2d(Y_input, self.HiddenLayer1, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer1_b)
-		Y_hiddenLayer2 = tf.nn.relu(tf.nn.conv2d(Y_hiddenLayer1, self.HiddenLayer2, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer2_b)
-		Y_hiddenLayer3 = tf.nn.relu(tf.nn.conv2d(Y_hiddenLayer2, self.HiddenLayer3, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer3_b)
-		Y_hiddenLayer4 = tf.nn.relu(tf.nn.conv2d(Y_hiddenLayer3, self.HiddenLayer4, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer4_b)
-		Y_hiddenLayer5 = tf.nn.relu(tf.nn.conv2d(Y_hiddenLayer4, self.HiddenLayer5, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer5_b)
+		Y_input = tf.nn.leaky_relu(tf.nn.conv2d(x, self.InputLayer, strides=[1, 2, 2, 1], padding='SAME') + self.InputLayer_b)
+		Y_hiddenLayer1 = tf.nn.leaky_relu(tf.nn.conv2d(Y_input, self.HiddenLayer1, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer1_b)
+		Y_hiddenLayer2 = tf.nn.leaky_relu(tf.nn.conv2d(Y_hiddenLayer1, self.HiddenLayer2, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer2_b)
+		Y_hiddenLayer3 = tf.nn.leaky_relu(tf.nn.conv2d(Y_hiddenLayer2, self.HiddenLayer3, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer3_b)
+		Y_hiddenLayer4 = tf.nn.leaky_relu(tf.nn.conv2d(Y_hiddenLayer3, self.HiddenLayer4, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer4_b)
+		Y_hiddenLayer5 = tf.nn.leaky_relu(tf.nn.conv2d(Y_hiddenLayer4, self.HiddenLayer5, strides=[1, 2, 2, 1], padding='SAME') + self.HiddenLayer5_b)
 
 		Y_outputLayerSrc = tf.nn.conv2d(Y_hiddenLayer5, self.OutputLayerSrc, strides=[1, 1, 1, 1],padding='SAME') + self.OutputLayerSrc_b
 		Y_outputLayerCls = tf.nn.conv2d(Y_hiddenLayer5, self.OutputLayerCls,strides=[1, 1, 1, 1], padding='VALID') + self.OutputLayerCls_b# TODO padding in YCls should BE "TYPE1"
