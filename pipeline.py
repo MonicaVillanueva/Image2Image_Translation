@@ -17,56 +17,6 @@ class Pipeline():
         self.batchSize = 16
         self.numClass = 5
 
-    def Discriminator(x, imageSize=128, convDim=64, numClass=5):
-        # Weights initialised
-        with tf.name_scope('Discriminator') as Dscope:
-            imageSize = imageSize
-            currDim = convDim
-
-            x = tf.variable_scope
-
-            InputLayer = weight_variable([4, 4, 3, currDim])
-            InputLayer_b = bias_variable([currDim])
-
-            HiddenLayer1 = weight_variable([4, 4, currDim, currDim * 2])
-            HiddenLayer1_b = bias_variable([currDim * 2])
-            currDim = currDim * 2
-
-            HiddenLayer2 = weight_variable([4, 4, currDim, currDim * 2])
-            HiddenLayer2_b = bias_variable([currDim * 2])
-            currDim = currDim * 2
-
-            HiddenLayer3 = weight_variable([4, 4, currDim, currDim * 2])
-            HiddenLayer3_b = bias_variable([currDim * 2])
-            currDim = currDim * 2
-
-            HiddenLayer4 = weight_variable([4, 4, currDim, currDim * 2])
-            HiddenLayer4_b = bias_variable([currDim * 2])
-            currDim = currDim * 2
-
-            HiddenLayer5 = weight_variable([4, 4, currDim, currDim * 2])
-            HiddenLayer5_b = bias_variable([currDim * 2])
-            currDim = currDim * 2
-
-            OutputLayerSrc = weight_variable([3, 3, currDim, 1])
-            OutputLayerSrc_b = bias_variable([1])
-
-            OutputLayerCls = weight_variable([imageSize / 64, imageSize / 64, currDim, numClass])
-            OutputLayerCls_b = bias_variable([numClass])
-
-            # x has to be a placeHolder or conexion with generator output
-            Y_input = tf.nn.relu(tf.nn.conv2d(x, InputLayer, strides=[1, 2, 2, 1], padding='SAME') + InputLayer_b)
-            Y_hiddenLayer1 = tf.nn.relu(tf.nn.conv2d(Y_input, HiddenLayer1, strides=[1, 2, 2, 1], padding='SAME') + HiddenLayer1_b)
-            Y_hiddenLayer2 = tf.nn.relu(tf.nn.conv2d(Y_hiddenLayer1, HiddenLayer2, strides=[1, 2, 2, 1],padding='SAME') + HiddenLayer2_b)
-            Y_hiddenLayer3 = tf.nn.relu(tf.nn.conv2d(Y_hiddenLayer2, HiddenLayer3, strides=[1, 2, 2, 1],padding='SAME') + HiddenLayer3_b)
-            Y_hiddenLayer4 = tf.nn.relu(tf.nn.conv2d(Y_hiddenLayer3, HiddenLayer4, strides=[1, 2, 2, 1], padding='SAME') + HiddenLayer4_b)
-            Y_hiddenLayer5 = tf.nn.relu(tf.nn.conv2d(Y_hiddenLayer4, HiddenLayer5, strides=[1, 2, 2, 1],padding='SAME') + HiddenLayer5_b)
-
-            Y_outputLayerSrc = tf.nn.conv2d(Y_hiddenLayer5, OutputLayerSrc, strides=[1, 1, 1, 1],padding='SAME') + OutputLayerSrc_b
-            Y_outputLayerCls = tf.nn.conv2d(Y_hiddenLayer5, OutputLayerCls, strides=[1, 1, 1, 1],padding='VALID') + OutputLayerCls_b  # TODO padding in YCls should BE "TYPE1"
-
-            return Y_outputLayerSrc,Y_outputLayerCls
-
     def init_model(self):
 
         # Initialize optimizers
