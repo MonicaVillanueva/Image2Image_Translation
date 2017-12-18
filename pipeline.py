@@ -7,6 +7,7 @@ from model import Generator, Discriminator
 from ast import literal_eval
 from utils import stackLabels
 
+
 class Pipeline():
     def __init__(self):
         self.learningRateD = 0.1
@@ -15,17 +16,20 @@ class Pipeline():
         self.imgDim = 128
         self.batchSize = 16
         self.numClass = 5
+        self.lambdaCls = 1
+        self.lambdaRec = 10
 
     def init_model(self):
-        #create the whole training graph
+        # Create the whole training graph
         self.realX = tf.placeholder(tf.float32, [None, self.imgDim, self.imgDim, 3], name="realX")
         self.realX_fakeLabels = tf.placeholder(tf.float32, [None, self.imgDim, self.imgDim, 3 + self.numClass], name="realX_fakeLabels")
         self.fakeX_realLabels = tf.placeholder(tf.float32, shape=[None, self.imgDim, self.imgDim, 3 + self.numClass], name="fakeX_realLabels")
-        self.realLabels = tf.placeholder(tf.float32, [None, 1, self.numClass], name="realLabels")
+        self.realLabels = tf.placeholder(tf.float32, [None, 1, 1, self.numClass], name="realLabels") # same size as YCls_real
+        self.fakeLabels = tf.placeholder(tf.float32, [None, 1, 1, self.numClass], name="fakeLabels")
         self.lrD = tf.placeholder(tf.float32)
         self.lrG = tf.placeholder(tf.float32)
 
-        # Initilize the generator and discriminator
+        # Initialize the generator and discriminator
         self.Gen = Generator()
         self.Dis = Discriminator()
 
@@ -38,33 +42,32 @@ class Pipeline():
 
 
         # Create D training pipeline
-        
         d_loss_real = tf.reduce_mean(YSrc_real)
-        
         d_loss_fake = tf.reduce_mean(YSrc_fake)
+        d_loss_adv = d_loss_real - d_loss_fake
 
-        d_loss_cls = tf.nn.softmax_cross_entropy_with_logits(labels=YCls_real,logits=self.realLabels, name="d_loss_cls")
+        d_loss_cls = tf.nn.sigmoid_cross_entropy_with_logits(labels=YCls_real,logits=self.realLabels, name="d_loss_cls")
 
-        d_loss = d_loss_real + d_loss_fake + d_loss_cls
+        d_loss = - d_loss_adv + self.lambdaCls * d_loss_cls
 
         #TODO: add D train step
         # self.train_D = tf.train.AdamOptimizer(
 
+
+
+
         # Create D training pipeline
-        recLossG = tf.reduce_mean(tf.abs(self.realX - recX))
+        g_loss_adv = - tf.reduce_mean(YSrc_fake) # TODO: review this
+        g_loss_cls = tf.nn.sigmoid_cross_entropy_with_logits(labels=YCls_fake,logits=self.fakeLabels) / self.batchSize
+        g_loss_rec = tf.reduce_mean(tf.abs(self.realX - recX))
 
-        # TODO: Dcls_Fake = ...
+        self.g_loss = g_loss_adv + self.lambdaCls * g_loss_cls + self.lambdaRec * g_loss_rec
 
-        # TODO: review this
-        Dadv_fake = - tf.reduce_mean(YSrc_fake)
-
-        self.gLoss = recLossG + Dadv_fake #+ Dcls_Fake
-
-        self.train_G = tf.train.AdamOptimizer(learning_rate=self.lrG, beta1=0.5, beta2=0.999).minimize(self.gLoss)
+        self.train_G = tf.train.AdamOptimizer(learning_rate=self.lrG, beta1=0.5, beta2=0.999).minimize(self.g_loss)
 
 
         #TF session
-        self.init = tf.initialize_all_variables()
+        self.init = tf.global_variables_initializer() #fixme: deprecated tf.initialize_all_variables()
         self.sess = tf.Session()
         self.sess.run(self.init)
 
@@ -90,8 +93,8 @@ class Pipeline():
                 fake = self.sess.run(self.fakeX, feed_dict={self.realX_fakeLabels: imagesWithFakeLabels})
                 fakeWithRealLabels = stackLabels(fake, trueLabels)
 
-                loss, _ = self.sess.run([self.gLoss, self.train_G],
-                                   feed_dict={self.lrG: self.learningRateG, self.fakeX_realLabels: fakeWithRealLabels,
+                loss, _ = self.sess.run([self.g_loss, self.train_G],
+                                        feed_dict={self.lrG: self.learningRateG, self.fakeX_realLabels: fakeWithRealLabels,
                                               self.realX_fakeLabels: imagesWithFakeLabels, self.realX: np.stack(images)})
 
                 pdb.set_trace()
