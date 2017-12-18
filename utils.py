@@ -14,3 +14,17 @@ def _stackLabels(img, labels, imgDim=128):
 		img = np.dstack([img, label])
 
 	return img
+
+def stackLabelsOnly(labels):
+	result = []
+	for label in labels:
+		result.append(_stackLabelsOnly(label))
+
+	return np.stack(result)
+
+def _stackLabelsOnly(labels, imgDim=128):
+	result = []
+	for l in labels:
+		result.append(l * np.ones([imgDim,imgDim]))
+
+	return np.dstack(result)

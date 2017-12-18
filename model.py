@@ -98,6 +98,11 @@ class Generator():
 
 		return fakeGeneration
 
+	def recForward(self, fake, trueLabels):
+		fakeWithRealLabels = tf.concat([fake, trueLabels], 3)
+
+		return self.forward(fakeWithRealLabels)
+
 
 class Discriminator():
 

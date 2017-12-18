@@ -5,7 +5,7 @@ import scipy.misc as sci
 import os
 from model import Generator, Discriminator
 from ast import literal_eval
-from utils import stackLabels
+from utils import stackLabels, stackLabelsOnly
 
 
 class Pipeline():
@@ -23,9 +23,11 @@ class Pipeline():
         # Create the whole training graph
         self.realX = tf.placeholder(tf.float32, [None, self.imgDim, self.imgDim, 3], name="realX")
         self.realX_fakeLabels = tf.placeholder(tf.float32, [None, self.imgDim, self.imgDim, 3 + self.numClass], name="realX_fakeLabels")
-        self.fakeX_realLabels = tf.placeholder(tf.float32, shape=[None, self.imgDim, self.imgDim, 3 + self.numClass], name="fakeX_realLabels")
+
         self.realLabels = tf.placeholder(tf.float32, [None, 1, 1, self.numClass], name="realLabels") # same size as YCls_real
+        self.realLabelsOneHot = tf.placeholder(tf.float32, [None, self.imgDim, self.imgDim, self.numClass], name="realLabelsOneHot")
         self.fakeLabels = tf.placeholder(tf.float32, [None, 1, 1, self.numClass], name="fakeLabels")
+
         self.lrD = tf.placeholder(tf.float32)
         self.lrG = tf.placeholder(tf.float32)
 
@@ -35,9 +37,9 @@ class Pipeline():
 
         # Get outputs
         self.fakeX = self.Gen.forward(self.realX_fakeLabels)
-        recX = self.Gen.forward(self.fakeX_realLabels)
-        YSrc_real, YCls_real =self.Dis.forward(self.realX)
-        YSrc_fake, YCls_fake =self.Dis.forward(self.fakeX)
+        recX = self.Gen.recForward(self.fakeX, self.realLabelsOneHot)
+        YSrc_real, YCls_real = self.Dis.forward(self.realX)
+        YSrc_fake, YCls_fake = self.Dis.forward(self.fakeX)
 
 
 
@@ -91,8 +93,6 @@ class Pipeline():
                 # X_G has to contain the original image with the labels to generate concatenated
                 randomLabels = np.random.randint(2, size=(self.batchSize, self.numClass))
                 imagesWithFakeLabels = stackLabels(images, randomLabels)
-                fake = self.sess.run(self.fakeX, feed_dict={self.realX_fakeLabels: imagesWithFakeLabels})
-                fakeWithRealLabels = stackLabels(fake, trueLabels)
 
                 # Reformat randomLabels to fit feeder
                 randomLabels = np.expand_dims(randomLabels, axis=1)
@@ -100,12 +100,12 @@ class Pipeline():
 
                 loss, _ = self.sess.run([self.g_loss, self.train_G],
                                         feed_dict={self.lrG: self.learningRateG,
-                                                   self.fakeX_realLabels: fakeWithRealLabels,
                                                    self.realX_fakeLabels: imagesWithFakeLabels,
+                                                   self.realLabelsOneHot: stackLabelsOnly(trueLabels),
                                                    self.realX: np.stack(images),
                                                    self.fakeLabels: randomLabels})
 
-                # pdb.set_trace()
+                pdb.set_trace()
                 images = []
                 trueLabels = []
 
