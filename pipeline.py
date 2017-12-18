@@ -67,7 +67,7 @@ class Pipeline():
 
 
         #TF session
-        self.init = tf.global_variables_initializer() #fixme: deprecated tf.initialize_all_variables()
+        self.init = tf.global_variables_initializer()
         self.sess = tf.Session()
         self.sess.run(self.init)
 
@@ -89,15 +89,23 @@ class Pipeline():
                 # -------------------------------------------------------------------------------------
                 # TODO: only each 5th time
                 # X_G has to contain the original image with the labels to generate concatenated
-                imagesWithFakeLabels = stackLabels(images, np.random.randint(2, size=(self.batchSize, self.numClass)))
+                randomLabels = np.random.randint(2, size=(self.batchSize, self.numClass))
+                imagesWithFakeLabels = stackLabels(images, randomLabels)
                 fake = self.sess.run(self.fakeX, feed_dict={self.realX_fakeLabels: imagesWithFakeLabels})
                 fakeWithRealLabels = stackLabels(fake, trueLabels)
 
-                loss, _ = self.sess.run([self.g_loss, self.train_G],
-                                        feed_dict={self.lrG: self.learningRateG, self.fakeX_realLabels: fakeWithRealLabels,
-                                              self.realX_fakeLabels: imagesWithFakeLabels, self.realX: np.stack(images)})
+                # Reformat randomLabels to fit feeder
+                randomLabels = np.expand_dims(randomLabels, axis=1)
+                randomLabels = np.expand_dims(randomLabels, axis=1)
 
-                pdb.set_trace()
+                loss, _ = self.sess.run([self.g_loss, self.train_G],
+                                        feed_dict={self.lrG: self.learningRateG,
+                                                   self.fakeX_realLabels: fakeWithRealLabels,
+                                                   self.realX_fakeLabels: imagesWithFakeLabels,
+                                                   self.realX: np.stack(images),
+                                                   self.fakeLabels: randomLabels})
+
+                # pdb.set_trace()
                 images = []
                 trueLabels = []
 
