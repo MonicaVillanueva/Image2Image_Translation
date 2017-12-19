@@ -10,7 +10,7 @@ from utils import stackLabels, stackLabelsOnly
 
 class Pipeline():
     def __init__(self):
-        self.learningRateD = 0.1
+        self.learningRateD = 0.0001
         self.learningRateG = 0.0001
         self.DBpath = 'processed'
         self.graphPath = ''
@@ -23,6 +23,11 @@ class Pipeline():
         self.g_skip_step = 5
         self.g_skip_count = 1
         self.epochs = 20
+        self.epochsDecay = 10
+        self.lrDecaysD = np.linspace(self.learningRateD,0,self.epochs-self.epochsDecay+2)
+        self.lrDecaysD = self.lrDecaysD[1:]
+        self.lrDecaysG = np.linspace(self.learningRateG,0,self.epochs-self.epochsDecay+2)
+        self.lrDecaysG = self.lrDecaysG[1:]
 
     def init_model(self):
         # Create the whole training graph
@@ -129,12 +134,16 @@ class Pipeline():
                         self.g_skip_count+=1
 
 
-
-                    #pdb.set_trace()
                     images = []
                     trueLabels = []
 
                     print("Dloss = " , dloss, " ", "Gloss = ", gloss, "Epoch =", e)
+
+            if (e+1) >= self.epochsDecay:
+                self.lrD = self.lrDecaysD[0]
+                self.lrG = self.lrDecaysG[0]
+                self.lrDecaysD = self.lrDecaysD[1:]
+                self.lrDecaysG = self.lrDecaysG[1:]
 
     def test(self):
         pass
