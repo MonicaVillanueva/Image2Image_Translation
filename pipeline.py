@@ -6,23 +6,23 @@ import os
 from model import Generator, Discriminator
 from ast import literal_eval
 from utils import stackLabels, stackLabelsOnly
-
+from model import weight_variable, bias_variable
 
 class Pipeline():
     def __init__(self):
         self.learningRateD = 0.0001
         self.learningRateG = 0.0001
-        self.DBpath = 'D:/processed'
+        self.DBpath = 'D:/processed/subset'
         self.graphPath = ''
         self.imgDim = 128
-        #FIXME out of memory for batch sizes bigger than 4
         self.batchSize = 4
         self.numClass = 5
         self.lambdaCls = 1
         self.lambdaRec = 10
+        self.lambdaGp = 10
         self.g_skip_step = 5
         self.g_skip_count = 1
-        self.epochs = 20
+        self.epochs = 10
         self.epochsDecay = 10
         self.lrDecaysD = np.linspace(self.learningRateD,0,self.epochs-self.epochsDecay+2)
         self.lrDecaysD = self.lrDecaysD[1:]
@@ -55,12 +55,28 @@ class Pipeline():
         YCls_fake = tf.squeeze(YCls_fake) # remove void dimensions
 
 
+        #-------------GRADIENT PENALTY---------------------------
+
+        _g_z = self.Gen.forward(weight_variable([self.batchSize, 128, 128, 3 + self.numClass]))
+        # calculate `x_hat`
+        epsilon = bias_variable([self.batchSize,1,1,1])
+        x_hat = epsilon * self.realX + (1.0 - epsilon) * _g_z
+
+        # gradient penalty
+        gradients = tf.gradients(self.Dis.forward(x_hat), [x_hat])
+        _gradient_penalty = 10.0 * tf.square(tf.norm(gradients[0], ord=2) - 1.0)
+        #-------------------------------------------------------------------------------
 
         # Create D training pipeline
         d_loss_real = tf.reduce_mean(YSrc_real)
         d_loss_fake = tf.reduce_mean(YSrc_fake)
-        d_loss_adv = d_loss_real - d_loss_fake
+        d_loss_adv = d_loss_real - d_loss_fake + - self.lambdaGp * _gradient_penalty
         d_loss_cls = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=YCls_real,logits=self.realLabels, name="d_loss_cls") / self.batchSize)
+
+
+
+
+
         self.d_loss = - d_loss_adv + self.lambdaCls * d_loss_cls
         #TODO: review parameters
 
