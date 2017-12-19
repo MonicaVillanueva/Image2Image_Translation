@@ -52,7 +52,7 @@ class Pipeline():
         d_loss_real = tf.reduce_mean(YSrc_real)
         d_loss_fake = tf.reduce_mean(YSrc_fake)
         d_loss_adv = d_loss_real - d_loss_fake
-        d_loss_cls = tf.nn.sigmoid_cross_entropy_with_logits(labels=YCls_real,logits=self.realLabels, name="d_loss_cls") / self.batchSize
+        d_loss_cls = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=YCls_real,logits=self.realLabels, name="d_loss_cls") / self.batchSize)
         #FIXME d_loss_cls is a matrix!
         self.d_loss = - d_loss_adv + self.lambdaCls * d_loss_cls
         #TODO: add D train step -> review parameters
@@ -107,7 +107,7 @@ class Pipeline():
 
 
 
-                if self.g_skip_count % self.g_skip_step == 0:
+                if self.g_skip_count == self.g_skip_step:
                     # -----------------------------------------------------------------------------------------
                     # -----------------------------------TRAIN GENERATOR---------------------------------------
                     # -----------------------------------------------------------------------------------------
