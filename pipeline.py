@@ -12,11 +12,11 @@ class Pipeline():
     def __init__(self):
         self.learningRateD = 0.0001
         self.learningRateG = 0.0001
-        self.DBpath = 'processed'
+        self.DBpath = 'D:/processed'
         self.graphPath = ''
         self.imgDim = 128
         #FIXME out of memory for batch sizes bigger than 4
-        self.batchSize = 16
+        self.batchSize = 4
         self.numClass = 5
         self.lambdaCls = 1
         self.lambdaRec = 10
@@ -63,7 +63,11 @@ class Pipeline():
         d_loss_cls = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=YCls_real,logits=self.realLabels, name="d_loss_cls") / self.batchSize)
         self.d_loss = - d_loss_adv + self.lambdaCls * d_loss_cls
         #TODO: review parameters
-        self.train_D = tf.train.AdamOptimizer(learning_rate=self.lrD, beta1=0.5, beta2=0.999).minimize(self.d_loss)
+
+        vars = tf.trainable_variables()
+
+        d_params = [v for v in vars if v.name.startswith('Discriminator/')]
+        self.train_D = tf.train.AdamOptimizer(learning_rate=self.lrD, beta1=0.5, beta2=0.999).minimize(self.d_loss, var_list=d_params)
 
 
         # Create G training pipeline
@@ -108,12 +112,19 @@ class Pipeline():
                     # -----------------------------------TRAIN DISCRIMINATOR-----------------------------------
                     # -----------------------------------------------------------------------------------------
 
+
+
                     dloss, _ = self.sess.run([self.d_loss, self.train_D],
                                             feed_dict={self.lrD: self.learningRateD,
                                                        self.realX_fakeLabels: imagesWithFakeLabels,
                                                        self.realLabels: trueLabels,
                                                        self.realX: np.stack(images),
-                                                       self.fakeLabels: randomLabels})
+                                                       self.fakeLabels: randomLabels},
+
+
+                                             )
+
+
 
 
 
