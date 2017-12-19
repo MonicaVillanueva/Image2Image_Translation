@@ -137,7 +137,7 @@ class Pipeline():
                     images = []
                     trueLabels = []
 
-                    print("Dloss = " , dloss, " ", "Gloss = ", gloss, "Epoch =", e)
+                    print("Loss = " , dloss + gloss, " ", "Dloss = " , dloss, " ", "Gloss = ", gloss, "Epoch =", e)
 
             if (e+1) >= self.epochsDecay:
                 self.lrD = self.lrDecaysD[0]
@@ -147,7 +147,3 @@ class Pipeline():
 
     def test(self):
         pass
-
-#p = Pipeline()
-#p.init_model()
-#p.train()
