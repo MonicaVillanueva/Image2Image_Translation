@@ -12,15 +12,18 @@ class Pipeline():
     def __init__(self):
         self.learningRateD = 0.1
         self.learningRateG = 0.0001
-        self.DBpath = 'D:/processed'
+        self.DBpath = 'processed'
+        self.graphPath = ''
         self.imgDim = 128
         #FIXME out of memory for batch sizes bigger than 4
-        self.batchSize = 4
+        self.batchSize = 16
         self.numClass = 5
         self.lambdaCls = 1
         self.lambdaRec = 10
         self.g_skip_step = 5
-        self.g_skip_count = 0
+        self.g_skip_count = 1
+        self.epochs = 20
+
     def init_model(self):
         # Create the whole training graph
         self.realX = tf.placeholder(tf.float32, [None, self.imgDim, self.imgDim, 3], name="realX")
@@ -72,7 +75,7 @@ class Pipeline():
         self.sess.run(self.init)
 
 
-        writer = tf.summary.FileWriter("C:/Users/Ferraat/Desktop/graph", graph=tf.get_default_graph())
+        writer = tf.summary.FileWriter(self.graphPath, graph=tf.get_default_graph())
 
 
     def train(self):
@@ -84,60 +87,54 @@ class Pipeline():
         gloss = 0
         dloss = 0
 
-        # TODO: for n batches
-        for filename in os.listdir(self.DBpath):
-            img = sci.imread(os.path.join(self.DBpath, filename))
-            splits = filename.split('_')
-            trueLabels.append(literal_eval(splits[1].split('.')[0]))
-            images.append(img)
-            if len(images) % self.batchSize == 0:
+        for e in range(self.epochs):
+            for filename in os.listdir(self.DBpath):
+                img = sci.imread(os.path.join(self.DBpath, filename))
+                splits = filename.split('_')
+                trueLabels.append(literal_eval(splits[1].split('.')[0]))
+                images.append(img)
+                if len(images) % self.batchSize == 0:
 
-                # Create fake labels and asociated images
-                randomLabels = np.random.randint(2, size=(self.batchSize, self.numClass))
-                imagesWithFakeLabels = stackLabels(images, randomLabels)
+                    # Create fake labels and asociated images
+                    randomLabels = np.random.randint(2, size=(self.batchSize, self.numClass))
+                    imagesWithFakeLabels = stackLabels(images, randomLabels)
 
-                # -----------------------------------------------------------------------------------------
-                # -----------------------------------TRAIN DISCRIMINATOR-----------------------------------
-                # -----------------------------------------------------------------------------------------
-
-                dloss, _ = self.sess.run([self.d_loss, self.train_D],
-                                        feed_dict={self.lrD: self.learningRateD,
-                                                   self.realX_fakeLabels: imagesWithFakeLabels,
-                                                   self.realLabels: trueLabels,
-                                                   self.realX: np.stack(images),
-                                                   self.fakeLabels: randomLabels})
-
-
-
-                if self.g_skip_count == self.g_skip_step:
                     # -----------------------------------------------------------------------------------------
-                    # -----------------------------------TRAIN GENERATOR---------------------------------------
+                    # -----------------------------------TRAIN DISCRIMINATOR-----------------------------------
                     # -----------------------------------------------------------------------------------------
-                    # TODO: only each 5th time
-                    # X_G has to contain the original image with the labels to generate concatenated
 
-
-                    # Reformat randomLabels to fit feeder
-                    # randomLabels = np.expand_dims(randomLabels, axis=1)
-                    # randomLabels = np.expand_dims(randomLabels, axis=1)
-
-                    gloss, _ = self.sess.run([self.g_loss, self.train_G],
-                                            feed_dict={self.lrG: self.learningRateG,
+                    dloss, _ = self.sess.run([self.d_loss, self.train_D],
+                                            feed_dict={self.lrD: self.learningRateD,
                                                        self.realX_fakeLabels: imagesWithFakeLabels,
-                                                       self.realLabelsOneHot: stackLabelsOnly(trueLabels),
+                                                       self.realLabels: trueLabels,
                                                        self.realX: np.stack(images),
                                                        self.fakeLabels: randomLabels})
-                    self.g_skip_count = 0
-                else:
-                    self.g_skip_count+=1
 
 
 
-                #pdb.set_trace()
-                images = []
-                trueLabels = []
+                    if self.g_skip_count == self.g_skip_step:
+                        # -----------------------------------------------------------------------------------------
+                        # -----------------------------------TRAIN GENERATOR---------------------------------------
+                        # -----------------------------------------------------------------------------------------
+                        # realX_fakeLabels has to contain the original image with the labels to generate concatenated
 
-                print("Dloss = " , dloss, " ", "Gloss = ", gloss)
+                        gloss, _ = self.sess.run([self.g_loss, self.train_G],
+                                                feed_dict={self.lrG: self.learningRateG,
+                                                           self.realX_fakeLabels: imagesWithFakeLabels,
+                                                           self.realLabelsOneHot: stackLabelsOnly(trueLabels),
+                                                           self.realX: np.stack(images),
+                                                           self.fakeLabels: randomLabels})
+                        self.g_skip_count = 1
+                    else:
+                        self.g_skip_count+=1
+
+
+
+                    #pdb.set_trace()
+                    images = []
+                    trueLabels = []
+
+                    print("Dloss = " , dloss, " ", "Gloss = ", gloss, "Epoch =", e)
 
     def test(self):
         pass
