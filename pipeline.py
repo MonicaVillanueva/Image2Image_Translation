@@ -53,9 +53,8 @@ class Pipeline():
         d_loss_fake = tf.reduce_mean(YSrc_fake)
         d_loss_adv = d_loss_real - d_loss_fake
         d_loss_cls = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=YCls_real,logits=self.realLabels, name="d_loss_cls") / self.batchSize)
-        #FIXME d_loss_cls is a matrix!
         self.d_loss = - d_loss_adv + self.lambdaCls * d_loss_cls
-        #TODO: add D train step -> review parameters
+        #TODO: review parameters
         self.train_D = tf.train.AdamOptimizer(learning_rate=self.lrD, beta1=0.5, beta2=0.999).minimize(self.d_loss)
 
 
@@ -75,12 +74,15 @@ class Pipeline():
 
         writer = tf.summary.FileWriter("C:/Users/Ferraat/Desktop/graph", graph=tf.get_default_graph())
 
+
     def train(self):
         # -----------------------------------------------------------------------------------------
         # -----------------------------------START TRAINING----------------------------------------
         # -----------------------------------------------------------------------------------------
         images = []
         trueLabels = []
+        gloss = 0
+        dloss = 0
 
         # TODO: for n batches
         for filename in os.listdir(self.DBpath):
