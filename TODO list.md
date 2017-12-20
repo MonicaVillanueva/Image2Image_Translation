@@ -4,8 +4,9 @@ Feature translation between images using Generative Adversarial Networks (GANs).
 TODO
 -------
 - [ ] Revise losses
-- [ ] Decay
-- [ ] Data augmentation 50%
+- [ ] Revise loading of saved model
 - [ ] Instance normalization
-- [ ] Gradient penalty
-- [ ] Testing with selected label (and image?)
+- [x] Decay
+- [x] Data augmentation 50%
+- [x] Gradient penalty
+- [x] Testing with selected label and image

@@ -28,3 +28,13 @@ def _stackLabelsOnly(labels, imgDim=128):
 		result.append(l * np.ones([imgDim,imgDim]))
 
 	return np.dstack(result)
+
+def normalize(img):
+	img = img.astype('float64')
+	for i in range(3):
+		img[:, :, i] = (img[:, :, i] - np.mean(img[:, :, i])) / np.std(img[:, :, i])
+	return img
+
+def denormalize(img):
+	img = (img + 1) / 2
+	return np.clip(img, 0, 1)

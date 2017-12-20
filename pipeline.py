@@ -5,8 +5,8 @@ import scipy.misc as sci
 import os
 from model import Generator, Discriminator
 from ast import literal_eval
-from utils import stackLabels, stackLabelsOnly
-from model import weight_variable, bias_variable
+from utils import stackLabels, stackLabelsOnly, normalize, denormalize
+import random
 
 class Pipeline():
     def __init__(self):
@@ -114,10 +114,16 @@ class Pipeline():
                 img = sci.imread(os.path.join(self.DBpath, filename))
                 splits = filename.split('_')
                 trueLabels.append(literal_eval(splits[1].split('.')[0]))
+
+                # Normalization and random flip (data augmentation)
+                img = normalize(img)
+                if random.random() > 0.5:
+                    img = np.fliplr(img)
+
                 images.append(img)
                 if len(images) % self.batchSize == 0:
 
-                    # Create fake labels and asociated images
+                    # Create fake labels and associated images
                     randomLabels = np.random.randint(2, size=(self.batchSize, self.numClass))
                     imagesWithFakeLabels = stackLabels(images, randomLabels)
 
@@ -179,15 +185,15 @@ class Pipeline():
 
 
     def test(self, labels=None, img=None):
-        # TODO:include parameters to choose image and labels
-
         if not os.path.exists(self.modelPath):
             print("The model does not exit")
             return
 
         with tf.Session() as sess:
             # Restore model weights from previously saved model
-            self.saver.restore(sess, self.modelPath)
+            folder = os.path.dirname(os.path.normpath(self.modelPath))
+            saver = tf.train.import_meta_graph(os.path.join(folder,'model.ckpt.meta'))
+            saver.restore(sess, tf.train.latest_checkpoint(folder))
 
             if img is None:
                 img = sci.imread(os.path.join(self.DBpath, "000001_[0, 0, 1, 0, 1].jpg"))
@@ -196,5 +202,10 @@ class Pipeline():
 
             testImage = stackLabels([img], labels)
             generatedImage = np.squeeze(self.sess.run([self.fakeX], feed_dict={self.realX_fakeLabels: testImage}))
-            sci.imsave('outfile.jpg', generatedImage)
+
+            # sci.imsave('img.jpg', img)
+            # img = normalize(img)
+            # sci.imsave('out.jpg', denormalize(img))
+
+            sci.imsave('outfile1.jpg', denormalize(generatedImage))
 
