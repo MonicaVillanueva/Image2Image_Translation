@@ -12,7 +12,7 @@ class Pipeline():
     def __init__(self):
         self.learningRateD = 0.0001
         self.learningRateG = 0.0001
-        self.DBpath = 'D:/processed/subset'
+        self.DBpath = 'D:/processed'
         self.graphPath = ''
         self.imgDim = 128
         self.batchSize = 4
@@ -38,6 +38,7 @@ class Pipeline():
         self.realLabelsOneHot = tf.placeholder(tf.float32, [None, self.imgDim, self.imgDim, self.numClass], name="realLabelsOneHot")
         self.fakeLabels = tf.placeholder(tf.float32, [None, self.numClass], name="fakeLabels")
 
+
         self.lrD = tf.placeholder(tf.float32)
         self.lrG = tf.placeholder(tf.float32)
 
@@ -56,32 +57,26 @@ class Pipeline():
 
 
         #-------------GRADIENT PENALTY---------------------------
-
-        _g_z = self.Gen.forward(weight_variable([self.batchSize, 128, 128, 3 + self.numClass]))
-        # calculate `x_hat`
-        epsilon = bias_variable([self.batchSize,1,1,1])
-        x_hat = epsilon * self.realX + (1.0 - epsilon) * _g_z
+        epsilon = tf.random_uniform(shape=[1,1,1,1], minval=0, maxval=0)
+        x_hat = epsilon * self.realX + (1.0 - epsilon) * self.fakeX
 
         # gradient penalty
-        gradients = tf.gradients(self.Dis.forward(x_hat), [x_hat])
-        _gradient_penalty = 10.0 * tf.square(tf.norm(gradients[0], ord=2) - 1.0)
+        YSrc,_ = self.Dis.forward(x_hat)
+        gradients = tf.gradients(YSrc, [x_hat])
+        self._gradient_penalty = tf.square(tf.norm(gradients[0], ord=2) - 1.0)# unnecesary mean
         #-------------------------------------------------------------------------------
 
         # Create D training pipeline
-        d_loss_real = tf.reduce_mean(YSrc_real)
-        d_loss_fake = tf.reduce_mean(YSrc_fake)
-        d_loss_adv = d_loss_real - d_loss_fake + - self.lambdaGp * _gradient_penalty
-        d_loss_cls = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=YCls_real,logits=self.realLabels, name="d_loss_cls") / self.batchSize)
+        self.d_loss_real = tf.reduce_mean(YSrc_real)
+        self.d_loss_fake = tf.reduce_mean(YSrc_fake)
+        self.d_loss_adv = self.d_loss_real - self.d_loss_fake - self.lambdaGp * self._gradient_penalty
+        self.d_loss_cls = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=YCls_real,logits=self.realLabels, name="d_loss_cls") / self.batchSize)
 
 
-
-
-
-        self.d_loss = - d_loss_adv + self.lambdaCls * d_loss_cls
+        self.d_loss = - self.d_loss_adv + self.lambdaCls * self.d_loss_cls
         #TODO: review parameters
 
         vars = tf.trainable_variables()
-
         d_params = [v for v in vars if v.name.startswith('Discriminator/')]
         self.train_D = tf.train.AdamOptimizer(learning_rate=self.lrD, beta1=0.5, beta2=0.999).minimize(self.d_loss, var_list=d_params)
 
@@ -100,8 +95,7 @@ class Pipeline():
         self.sess.run(self.init)
 
 
-        writer = tf.summary.FileWriter(self.graphPath, graph=tf.get_default_graph())
-
+        #writer = tf.summary.FileWriter(self.graphPath, graph=tf.get_default_graph())
 
     def train(self):
         # -----------------------------------------------------------------------------------------
@@ -130,15 +124,12 @@ class Pipeline():
 
 
 
-                    dloss, _ = self.sess.run([self.d_loss, self.train_D],
+                    dloss, _ ,d_loss_real, d_loss_fake, _gradient_penalty, d_loss_cls= self.sess.run([self.d_loss, self.train_D, self.d_loss_real, self.d_loss_fake, self._gradient_penalty, self.d_loss_cls],
                                             feed_dict={self.lrD: self.learningRateD,
                                                        self.realX_fakeLabels: imagesWithFakeLabels,
                                                        self.realLabels: trueLabels,
                                                        self.realX: np.stack(images),
-                                                       self.fakeLabels: randomLabels},
-
-
-                                             )
+                                                       self.fakeLabels: randomLabels,})
 
 
 
@@ -164,7 +155,8 @@ class Pipeline():
                     images = []
                     trueLabels = []
 
-                    print("Loss = " , dloss + gloss, " ", "Dloss = " , dloss, " ", "Gloss = ", gloss, "Epoch =", e)
+                    #print("Loss = " , dloss + gloss, " ", "Dloss = " , dloss, " ", "Gloss = ", gloss, "Epoch =", e)
+                    print("Dloss = " , dloss, " d_loss_real: ", d_loss_real, " d_loss_fake: ", d_loss_fake, " gradient penalty: ", _gradient_penalty, " d_loss_cls: ", d_loss_cls)
 
             if (e+1) >= self.epochsDecay:
                 self.lrD = self.lrDecaysD[0]
