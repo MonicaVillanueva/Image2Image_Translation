@@ -12,8 +12,9 @@ class Pipeline():
     def __init__(self):
         self.learningRateD = 0.0001
         self.learningRateG = 0.0001
-        self.DBpath = 'D:/processed'
+        self.DBpath = 'processed\subset'
         self.graphPath = ''
+        self.modelPath = 'C:\\Users\python\model_I2ITranslation\model.ckpt'
         self.imgDim = 128
         self.batchSize = 4
         self.numClass = 5
@@ -24,6 +25,7 @@ class Pipeline():
         self.g_skip_count = 1
         self.epochs = 10
         self.epochsDecay = 10
+        self.epochsSave = 2
         self.lrDecaysD = np.linspace(self.learningRateD,0,self.epochs-self.epochsDecay+2)
         self.lrDecaysD = self.lrDecaysD[1:]
         self.lrDecaysG = np.linspace(self.learningRateG,0,self.epochs-self.epochsDecay+2)
@@ -93,6 +95,7 @@ class Pipeline():
         self.init = tf.global_variables_initializer()
         self.sess = tf.Session()
         self.sess.run(self.init)
+        self.saver = tf.train.Saver()
 
 
         #writer = tf.summary.FileWriter(self.graphPath, graph=tf.get_default_graph())
@@ -164,5 +167,34 @@ class Pipeline():
                 self.lrDecaysD = self.lrDecaysD[1:]
                 self.lrDecaysG = self.lrDecaysG[1:]
 
-    def test(self):
-        pass
+
+            # Save model every epochsSave epochs
+            if e == 0:
+                if not os.path.exists(self.modelPath):
+                    os.makedirs(self.modelPath)
+
+            elif e % self.epochsSave == 0:
+                self.saver.save(self.sess, self.modelPath)
+
+
+
+    def test(self, labels=None, img=None):
+        # TODO:include parameters to choose image and labels
+
+        if not os.path.exists(self.modelPath):
+            print("The model does not exit")
+            return
+
+        with tf.Session() as sess:
+            # Restore model weights from previously saved model
+            self.saver.restore(sess, self.modelPath)
+
+            if img is None:
+                img = sci.imread(os.path.join(self.DBpath, "000001_[0, 0, 1, 0, 1].jpg"))
+            if labels is None:
+                labels = np.random.randint(2, size=(1, 5))
+
+            testImage = stackLabels([img], labels)
+            generatedImage = np.squeeze(self.sess.run([self.fakeX], feed_dict={self.realX_fakeLabels: testImage}))
+            sci.imsave('outfile.jpg', generatedImage)
+
