@@ -82,8 +82,12 @@ class Pipeline():
 
         # gradient penalty
         YSrc,_ = self.Dis.forward(x_hat)
-        gradients = tf.gradients(YSrc, [x_hat])
-        self._gradient_penalty = tf.square(tf.norm(gradients[0], ord=2) - 1.0)# unnecesary mean
+        gradients = tf.gradients(YSrc, [x_hat])[0]
+        gradients_shape = gradients.get_shape().as_list()
+        gradients_dim = np.prod(gradients_shape[1:])
+        gradients = tf.reshape(gradients, [-1, gradients_dim])
+        gradients_norm = tf.reduce_sum(gradients, axis=1)**2
+        self._gradient_penalty = tf.reduce_mean(tf.square(gradients_norm - 1.0))# unnecesary mean
 
         self.d_loss_gp = self.lambdaGp * self._gradient_penalty
         self.train_D_gp = self.train_D.minimize(self.d_loss_gp, var_list=self.d_params)
@@ -183,10 +187,10 @@ class Pipeline():
                     trueLabels = []
 
                     #print("Loss = " , dloss + gloss, " ", "Dloss = " , dloss, " ", "Gloss = ", gloss, "Epoch =", e)
-                    #print("Dloss = " , dloss, " d_loss_real: ", d_loss_real, " d_loss_fake: ", d_loss_fake, " gradient penalty: ", _gradient_penalty, " d_loss_cls: ", d_loss_cls)
+                    print("Dloss = " , dloss, " d_loss_real: ", d_loss_real, " d_loss_fake: ", d_loss_fake, " gradient penalty: ", _gradient_penalty, " d_loss_cls: ", d_loss_cls)
                     #print("YCls_real: ")
                     #print(YCls_real)
-                    print([np.mean(i) for i in gradLoss])
+                    #print([np.mean(i) for i in gradLoss])
 
             if (e+1) >= self.epochsDecay:
                 self.lrD = self.lrDecaysD[0]
