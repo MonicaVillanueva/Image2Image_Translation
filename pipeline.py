@@ -3,7 +3,7 @@ import tensorflow as tf
 import pdb
 import scipy.misc as sci
 import os
-from model import Generator, Discriminator
+from model_new import Generator, Discriminator
 from ast import literal_eval
 from utils import stackLabels, stackLabelsOnly, normalize, denormalize
 import random
@@ -12,9 +12,9 @@ class Pipeline():
     def __init__(self):
         self.learningRateD = 0.0001
         self.learningRateG = 0.0001
-        self.DBpath = 'processed\subset'
+        self.DBpath = 'D:/processed'
         self.graphPath = ''
-        self.modelPath = 'C:\\Users\python\model_I2ITranslation\model.ckpt'
+        self.modelPath = 'model/model.ckpt'
         self.imgDim = 128
         self.batchSize = 4
         self.numClass = 5
@@ -51,11 +51,29 @@ class Pipeline():
         # Get outputs
         self.fakeX = self.Gen.forward(self.realX_fakeLabels)
         recX = self.Gen.recForward(self.fakeX, self.realLabelsOneHot)
-        YSrc_real, YCls_real = self.Dis.forward(self.realX)
+        YSrc_real, self.YCls_real = self.Dis.forward(self.realX)
         YSrc_fake, YCls_fake = self.Dis.forward(self.fakeX)
 
-        YCls_real = tf.squeeze(YCls_real)  # remove void dimensions
+        self.YCls_real = tf.squeeze(self.YCls_real)  # remove void dimensions
         YCls_fake = tf.squeeze(YCls_fake) # remove void dimensions
+
+
+
+
+        # Create D training pipeline
+        self.d_loss_real = tf.reduce_mean(YSrc_real)
+        self.d_loss_fake = tf.reduce_mean(YSrc_fake)
+        self.d_loss_adv = self.d_loss_real - self.d_loss_fake
+        self.d_loss_cls = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.YCls_real,logits=self.realLabels, name="d_loss_cls") / self.batchSize)
+
+
+        self.d_loss = - self.d_loss_adv + self.lambdaCls * self.d_loss_cls
+        #TODO: review parameters
+
+        vars = tf.trainable_variables()
+        self.d_params = [v for v in vars if v.name.startswith('Discriminator/')]
+        self.train_D = tf.train.AdamOptimizer(learning_rate=self.lrD, beta1=0.5, beta2=0.999)
+        self.train_D_loss = self.train_D.minimize(self.d_loss, var_list=self.d_params)
 
 
         #-------------GRADIENT PENALTY---------------------------
@@ -66,29 +84,21 @@ class Pipeline():
         YSrc,_ = self.Dis.forward(x_hat)
         gradients = tf.gradients(YSrc, [x_hat])
         self._gradient_penalty = tf.square(tf.norm(gradients[0], ord=2) - 1.0)# unnecesary mean
+
+        self.d_loss_gp = self.lambdaGp * self._gradient_penalty
+        self.train_D_gp = self.train_D.minimize(self.d_loss_gp, var_list=self.d_params)
         #-------------------------------------------------------------------------------
 
-        # Create D training pipeline
-        self.d_loss_real = tf.reduce_mean(YSrc_real)
-        self.d_loss_fake = tf.reduce_mean(YSrc_fake)
-        self.d_loss_adv = self.d_loss_real - self.d_loss_fake - self.lambdaGp * self._gradient_penalty
-        self.d_loss_cls = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=YCls_real,logits=self.realLabels, name="d_loss_cls") / self.batchSize)
-
-
-        self.d_loss = - self.d_loss_adv + self.lambdaCls * self.d_loss_cls
-        #TODO: review parameters
-
-        vars = tf.trainable_variables()
-        d_params = [v for v in vars if v.name.startswith('Discriminator/')]
-        self.train_D = tf.train.AdamOptimizer(learning_rate=self.lrD, beta1=0.5, beta2=0.999).minimize(self.d_loss, var_list=d_params)
-
+        self.train_D_gradLoss = self.train_D.compute_gradients(self.d_loss, var_list=self.d_params)
 
         # Create G training pipeline
         g_loss_adv = - tf.reduce_mean(YSrc_fake) # TODO: review this
         g_loss_cls = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=YCls_fake,logits=self.fakeLabels)) / self.batchSize
         g_loss_rec = tf.reduce_mean(tf.abs(self.realX - recX))
         self.g_loss = g_loss_adv + self.lambdaCls * g_loss_cls + self.lambdaRec * g_loss_rec
-        self.train_G = tf.train.AdamOptimizer(learning_rate=self.lrG, beta1=0.5, beta2=0.999).minimize(self.g_loss)
+        self.train_G = tf.train.AdamOptimizer(learning_rate=self.lrG, beta1=0.5, beta2=0.999)
+        self.train_G_loss = self.train_G.minimize(self.g_loss)
+
 
 
         #TF session
@@ -106,8 +116,6 @@ class Pipeline():
         # -----------------------------------------------------------------------------------------
         images = []
         trueLabels = []
-        gloss = 0
-        dloss = 0
 
         for e in range(self.epochs):
             for filename in os.listdir(self.DBpath):
@@ -131,9 +139,19 @@ class Pipeline():
                     # -----------------------------------TRAIN DISCRIMINATOR-----------------------------------
                     # -----------------------------------------------------------------------------------------
 
+                    #print(np.mean(self.sess.run(self.d_params[4])))
 
 
-                    dloss, _ ,d_loss_real, d_loss_fake, _gradient_penalty, d_loss_cls= self.sess.run([self.d_loss, self.train_D, self.d_loss_real, self.d_loss_fake, self._gradient_penalty, self.d_loss_cls],
+                    dloss, _ , _, d_loss_real, d_loss_fake, _gradient_penalty, d_loss_cls, YCls_real, gradLoss = self.sess.run(
+                                            [self.d_loss,
+                                             self.train_D_loss,
+                                             self.train_D_gp,
+                                             self.d_loss_real,
+                                             self.d_loss_fake,
+                                             self._gradient_penalty,
+                                             self.d_loss_cls,
+                                             self.YCls_real,
+                                             self.train_D_gradLoss],
                                             feed_dict={self.lrD: self.learningRateD,
                                                        self.realX_fakeLabels: imagesWithFakeLabels,
                                                        self.realLabels: trueLabels,
@@ -150,7 +168,7 @@ class Pipeline():
                         # -----------------------------------------------------------------------------------------
                         # realX_fakeLabels has to contain the original image with the labels to generate concatenated
 
-                        gloss, _ = self.sess.run([self.g_loss, self.train_G],
+                        gloss, _ = self.sess.run([self.g_loss, self.train_G_loss],
                                                 feed_dict={self.lrG: self.learningRateG,
                                                            self.realX_fakeLabels: imagesWithFakeLabels,
                                                            self.realLabelsOneHot: stackLabelsOnly(trueLabels),
@@ -165,7 +183,10 @@ class Pipeline():
                     trueLabels = []
 
                     #print("Loss = " , dloss + gloss, " ", "Dloss = " , dloss, " ", "Gloss = ", gloss, "Epoch =", e)
-                    print("Dloss = " , dloss, " d_loss_real: ", d_loss_real, " d_loss_fake: ", d_loss_fake, " gradient penalty: ", _gradient_penalty, " d_loss_cls: ", d_loss_cls)
+                    #print("Dloss = " , dloss, " d_loss_real: ", d_loss_real, " d_loss_fake: ", d_loss_fake, " gradient penalty: ", _gradient_penalty, " d_loss_cls: ", d_loss_cls)
+                    #print("YCls_real: ")
+                    #print(YCls_real)
+                    print([np.mean(i) for i in gradLoss])
 
             if (e+1) >= self.epochsDecay:
                 self.lrD = self.lrDecaysD[0]
