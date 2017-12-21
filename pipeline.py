@@ -3,7 +3,7 @@ import tensorflow as tf
 import pdb
 import scipy.misc as sci
 import os
-from model_new import Generator, Discriminator
+from model import Generator, Discriminator
 from ast import literal_eval
 from utils import stackLabels, stackLabelsOnly, normalize, denormalize
 import random
@@ -12,11 +12,11 @@ class Pipeline():
     def __init__(self):
         self.learningRateD = 0.0001
         self.learningRateG = 0.0001
-        self.DBpath = 'D:/processed'
+        self.DBpath = 'processed'
         self.graphPath = ''
         self.modelPath = 'model/model.ckpt'
         self.imgDim = 128
-        self.batchSize = 4
+        self.batchSize = 16
         self.numClass = 5
         self.lambdaCls = 1
         self.lambdaRec = 10
@@ -137,6 +137,7 @@ class Pipeline():
 
                     # Create fake labels and associated images
                     randomLabels = np.random.randint(2, size=(self.batchSize, self.numClass))
+                    # realX_fakeLabels has to contain the original image with the labels to generate concatenated
                     imagesWithFakeLabels = stackLabels(images, randomLabels)
                     epsilon = np.random.rand()
                     # -----------------------------------------------------------------------------------------
@@ -161,9 +162,7 @@ class Pipeline():
                                                        self.realLabels: trueLabels,
                                                        self.realX: np.stack(images),
                                                        self.fakeLabels: randomLabels,
-                                                       self.epsilonph: epsilon,})
-
-
+                                                       self.epsilonph: epsilon})
 
 
 
@@ -171,7 +170,6 @@ class Pipeline():
                         # -----------------------------------------------------------------------------------------
                         # -----------------------------------TRAIN GENERATOR---------------------------------------
                         # -----------------------------------------------------------------------------------------
-                        # realX_fakeLabels has to contain the original image with the labels to generate concatenated
 
                         gloss, _ = self.sess.run([self.g_loss, self.train_G_loss],
                                                 feed_dict={self.lrG: self.learningRateG,
