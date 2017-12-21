@@ -39,6 +39,7 @@ class Pipeline():
         self.realLabels = tf.placeholder(tf.float32, [None, self.numClass], name="realLabels")
         self.realLabelsOneHot = tf.placeholder(tf.float32, [None, self.imgDim, self.imgDim, self.numClass], name="realLabelsOneHot")
         self.fakeLabels = tf.placeholder(tf.float32, [None, self.numClass], name="fakeLabels")
+        self.epsilonph = tf.placeholder(tf.float32, [], name="epsilonph")
 
 
         self.lrD = tf.placeholder(tf.float32)
@@ -77,8 +78,7 @@ class Pipeline():
 
 
         #-------------GRADIENT PENALTY---------------------------
-        epsilon = tf.random_uniform(shape=[1,1,1,1], minval=0, maxval=0)
-        x_hat = epsilon * self.realX + (1.0 - epsilon) * self.fakeX
+        x_hat = self.epsilonph * self.realX + (1.0 - self.epsilonph) * self.fakeX
 
         # gradient penalty
         YSrc,_ = self.Dis.forward(x_hat)
@@ -138,7 +138,7 @@ class Pipeline():
                     # Create fake labels and associated images
                     randomLabels = np.random.randint(2, size=(self.batchSize, self.numClass))
                     imagesWithFakeLabels = stackLabels(images, randomLabels)
-
+                    epsilon = np.random.rand()
                     # -----------------------------------------------------------------------------------------
                     # -----------------------------------TRAIN DISCRIMINATOR-----------------------------------
                     # -----------------------------------------------------------------------------------------
@@ -160,7 +160,8 @@ class Pipeline():
                                                        self.realX_fakeLabels: imagesWithFakeLabels,
                                                        self.realLabels: trueLabels,
                                                        self.realX: np.stack(images),
-                                                       self.fakeLabels: randomLabels,})
+                                                       self.fakeLabels: randomLabels,
+                                                       self.epsilonph: epsilon,})
 
 
 
