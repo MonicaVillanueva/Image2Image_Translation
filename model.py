@@ -29,8 +29,13 @@ class Generator():
 
 			# FIXME PADDING P3...EN TF?
 			self.downSampling1 = tf.layers.Conv2D(filters=64,kernel_size=[7, 7],padding="same",activation=tf.nn.relu, use_bias=False, strides=1)
+			self.downSampling1_norm = tf.layers.BatchNormalization()
+
 			self.downSampling2 = tf.layers.Conv2D(filters=128,kernel_size=[4, 4],padding="same",activation=tf.nn.relu, use_bias=False, strides=2)
+			self.downSampling2_norm = tf.layers.BatchNormalization()
+
 			self.downSampling3 = tf.layers.Conv2D(filters=256,kernel_size=[4, 4],padding="same",activation=tf.nn.relu, use_bias=False, strides=2)
+			self.downSampling3_norm = tf.layers.BatchNormalization()
 
 			self.residualBlock1 = ResidualBlock()
 			self.residualBlock2 = ResidualBlock()
@@ -53,8 +58,12 @@ class Generator():
 			batch_size = tf.shape(X_G)[0]
 
 			h = self.downSampling1(X_G)
+			h = self.downSampling1_norm(h)
 			h = self.downSampling2(h)
+			h = self.downSampling2_norm(h)
 			h = self.downSampling3(h)
+			h = self.downSampling3_norm(h)
+
 
 			h = self.residualBlock1.forward(h)
 			h = self.residualBlock2.forward(h)
