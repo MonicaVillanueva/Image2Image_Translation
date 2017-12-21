@@ -31,8 +31,9 @@ def _stackLabelsOnly(labels, imgDim=128):
 
 def normalize(img):
 	img = img.astype('float64')
-	img2 = (img - img.min()) / (img.max() - img.min())
-	return img2
+	img = (img - img.min()) / (img.max() - img.min())
+	img = (img - 0.5) / 0.5
+	return img
 
 def denormalize(img):
 	img = (img + 1) / 2
