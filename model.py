@@ -3,21 +3,30 @@ import numpy as np
 
 # FLAG: use Instance normalization instead of batch normalization
 
+def _instance_norm(net, train=True):
+    batch, rows, cols, channels = [i.value for i in net.get_shape()]
+    var_shape = [channels]
+    mu, sigma_sq = tf.nn.moments(net, [1,2], keep_dims=True)
+    shift = tf.Variable(tf.zeros(var_shape))
+    scale = tf.Variable(tf.ones(var_shape))
+    epsilon = 1e-3
+    normalized = (net-mu)/(sigma_sq + epsilon)**(.5)
+    return scale * normalized + shift
 
 class ResidualBlock():
 	"""Residual Block."""
 	def __init__(self, dim_in=256, dim_out=256):
 		self.Y1 = tf.layers.Conv2D(filters=dim_out, kernel_size=[3, 3], padding="same", activation=tf.nn.relu,use_bias=False, strides=1)
-		self.Y1_norm = tf.layers.BatchNormalization()
+		#self.Y1_norm = tf.layers.BatchNormalization()
 		self.Y2 = tf.layers.Conv2D(filters=dim_out, kernel_size=[3, 3], padding="same", activation=tf.nn.relu,use_bias=False, strides=1)
-		self.Y2_norm = tf.layers.BatchNormalization()
+		#self.Y2_norm = tf.layers.BatchNormalization()
 
 	def forward(self, x):
 		h = self.Y1(x)
-		h = self.Y1_norm(h)
+		h = _instance_norm(h)
 		h = tf.nn.relu(h)
 		h = self.Y2(h)
-		h = self.Y2_norm(h)
+		h = _instance_norm(h)
 
 		return x + h
 
@@ -29,13 +38,13 @@ class Generator():
 
 			# FIXME PADDING P3...EN TF?
 			self.downSampling1 = tf.layers.Conv2D(filters=64,kernel_size=[7, 7],padding="same",activation=tf.nn.relu, use_bias=False, strides=1)
-			self.downSampling1_norm = tf.layers.BatchNormalization()
+			#self.downSampling1_norm = tf.layers.BatchNormalization()
 
 			self.downSampling2 = tf.layers.Conv2D(filters=128,kernel_size=[4, 4],padding="same",activation=tf.nn.relu, use_bias=False, strides=2)
-			self.downSampling2_norm = tf.layers.BatchNormalization()
+			#self.downSampling2_norm = tf.layers.BatchNormalization()
 
 			self.downSampling3 = tf.layers.Conv2D(filters=256,kernel_size=[4, 4],padding="same",activation=tf.nn.relu, use_bias=False, strides=2)
-			self.downSampling3_norm = tf.layers.BatchNormalization()
+			#self.downSampling3_norm = tf.layers.BatchNormalization()
 
 			self.residualBlock1 = ResidualBlock()
 			self.residualBlock2 = ResidualBlock()
@@ -45,9 +54,9 @@ class Generator():
 			self.residualBlock6 = ResidualBlock()
 
 			self.Y_upSampling1 = tf.layers.Conv2DTranspose(filters=128,kernel_size=[4, 4],padding="same",activation=tf.nn.relu, use_bias=False, strides=2)
-			self.Y_upSampling1_norm = tf.layers.BatchNormalization()
+			#self.Y_upSampling1_norm = tf.layers.BatchNormalization()
 			self.Y_upSampling2 = tf.layers.Conv2DTranspose(filters=64,kernel_size=[4, 4],padding="same",activation=tf.nn.relu, use_bias=False, strides=2)
-			self.Y_upSampling2_norm = tf.layers.BatchNormalization()
+			#self.Y_upSampling2_norm = tf.layers.BatchNormalization()
 
 			self.fakeGeneration = tf.layers.Conv2D(filters=3,kernel_size=[7, 7],padding="same",activation=tf.nn.tanh, use_bias=False, strides=1) #FIXME PADDING P3 IN TF...?
 
@@ -58,11 +67,11 @@ class Generator():
 			batch_size = tf.shape(X_G)[0]
 
 			h = self.downSampling1(X_G)
-			h = self.downSampling1_norm(h)
+			h = _instance_norm(h)
 			h = self.downSampling2(h)
-			h = self.downSampling2_norm(h)
+			h = _instance_norm(h)
 			h = self.downSampling3(h)
-			h = self.downSampling3_norm(h)
+			h = _instance_norm(h)
 
 
 			h = self.residualBlock1.forward(h)
@@ -73,9 +82,9 @@ class Generator():
 			h = self.residualBlock6.forward(h)
 
 			h = self.Y_upSampling1(h)
-			h = self.Y_upSampling1_norm(h)
+			h = _instance_norm(h)
 			h = self.Y_upSampling2(h)
-			h = self.Y_upSampling2_norm(h)
+			h = _instance_norm(h)
 
 			return self.fakeGeneration(h)
 
@@ -104,7 +113,6 @@ class Discriminator():
 			self.HiddenLayer4 = tf.layers.Conv2D(filters=currDim*2,kernel_size=[4, 4],padding="same",activation=tf.nn.leaky_relu, use_bias=True, strides=2)
 			currDim = currDim*2
 			self.HiddenLayer5 = tf.layers.Conv2D(filters=currDim*2,kernel_size=[4, 4],padding="same",activation=tf.nn.leaky_relu, use_bias=True, strides=2)
-			currDim = currDim*2
 
 			self.OutputLayerSrc = tf.layers.Conv2D(filters=1,kernel_size=[3, 3],padding="same",activation=None, use_bias=False, strides=1)
 
