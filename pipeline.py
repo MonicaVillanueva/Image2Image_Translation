@@ -12,7 +12,7 @@ class Pipeline():
     def __init__(self):
         self.learningRateD = 0.0001
         self.learningRateG = 0.0001
-        self.DBpath = 'processed'
+        self.DBpath = 'subset'
         self.graphPath = ''
         self.modelPath = 'model/model.ckpt'
         self.imgDim = 128
@@ -25,7 +25,7 @@ class Pipeline():
         self.g_skip_count = 1
         self.epochs = 10
         self.epochsDecay = 10
-        self.epochsSave = 2
+        self.epochsSave = 1
         self.lrDecaysD = np.linspace(self.learningRateD,0,self.epochs-self.epochsDecay+2)
         self.lrDecaysD = self.lrDecaysD[1:]
         self.lrDecaysG = np.linspace(self.learningRateG,0,self.epochs-self.epochsDecay+2)
@@ -65,7 +65,7 @@ class Pipeline():
         self.d_loss_real = tf.reduce_mean(YSrc_real)
         self.d_loss_fake = tf.reduce_mean(YSrc_fake)
         self.d_loss_adv = self.d_loss_real - self.d_loss_fake
-        self.d_loss_cls = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.YCls_real,logits=self.realLabels, name="d_loss_cls") / self.batchSize)
+        self.d_loss_cls = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.YCls_real,logits=self.realLabels, name="d_loss_cls")) / self.batchSize
 
 
         self.d_loss = - self.d_loss_adv + self.lambdaCls * self.d_loss_cls
@@ -120,6 +120,8 @@ class Pipeline():
         # -----------------------------------------------------------------------------------------
         images = []
         trueLabels = []
+        gloss = 0
+        updates = 0
 
         for e in range(self.epochs):
             for filename in os.listdir(self.DBpath):
@@ -186,10 +188,20 @@ class Pipeline():
                     trueLabels = []
 
                     #print("Loss = " , dloss + gloss, " ", "Dloss = " , dloss, " ", "Gloss = ", gloss, "Epoch =", e)
-                    print("Dloss = " , dloss, " d_loss_real: ", d_loss_real, " d_loss_fake: ", d_loss_fake, " gradient penalty: ", _gradient_penalty, " d_loss_cls: ", d_loss_cls)
+                    print("Dloss = " , dloss, " d_loss_real: ", d_loss_real, " d_loss_fake: ", d_loss_fake, 
+                        " gradient penalty: ", _gradient_penalty, " d_loss_cls: ", d_loss_cls, "Gloss = ", gloss, 
+                        "updates = ", updates)
                     #print("YCls_real: ")
                     #print(YCls_real)
                     #print([np.mean(i) for i in gradLoss])
+                    updates += 1 
+                    if updates % 5 == 0:
+                        img = normalize(sci.imread(os.path.join(self.DBpath, "000001_[0, 0, 1, 0, 1].jpg")))
+                        labels = np.array([1,0,0,0,1])
+                        testImage = stackLabels([img], [labels])
+                        generatedImage = np.squeeze(self.sess.run(self.fakeX, feed_dict={self.realX_fakeLabels: testImage}), axis=0)
+
+                        sci.imsave('outfile' + str(updates) + '.jpg', denormalize(generatedImage))  
 
             if (e+1) >= self.epochsDecay:
                 self.lrD = self.lrDecaysD[0]
@@ -203,8 +215,9 @@ class Pipeline():
                 if not os.path.exists(self.modelPath):
                     os.makedirs(self.modelPath)
 
-            elif e % self.epochsSave == 0:
+            if e % self.epochsSave == 0:
                 self.saver.save(self.sess, self.modelPath)
+                
 
 
 
@@ -220,12 +233,12 @@ class Pipeline():
             saver.restore(sess, tf.train.latest_checkpoint(folder))
 
             if img is None:
-                img = sci.imread(os.path.join(self.DBpath, "000001_[0, 0, 1, 0, 1].jpg"))
+                img = normalize(sci.imread(os.path.join(self.DBpath, "000001_[0, 0, 1, 0, 1].jpg")))
             if labels is None:
-                labels = np.random.randint(2, size=(1, 5))
+                labels = [np.array([1,0,0,0,1])]
 
             testImage = stackLabels([img], labels)
-            generatedImage = np.squeeze(self.sess.run([self.fakeX], feed_dict={self.realX_fakeLabels: testImage}))
+            generatedImage = np.squeeze(self.sess.run(self.fakeX, feed_dict={self.realX_fakeLabels: testImage}))
 
             # sci.imsave('img.jpg', img)
             # img = normalize(img)
