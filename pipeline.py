@@ -7,16 +7,18 @@ from model import Generator, Discriminator
 from ast import literal_eval
 from utils import stackLabels, stackLabelsOnly, normalize, denormalize
 import random
+import scipy.misc
+
 
 class Pipeline():
     def __init__(self):
         self.learningRateD = 0.0001
         self.learningRateG = 0.0001
-        self.DBpath = 'processed'
+        self.DBpath = 'D:/processed'
         self.graphPath = ''
         self.modelPath = 'model/model.ckpt'
         self.imgDim = 128
-        self.batchSize = 16
+        self.batchSize = 2
         self.numClass = 5
         self.lambdaCls = 1
         self.lambdaRec = 10
@@ -39,6 +41,8 @@ class Pipeline():
         self.realLabels = tf.placeholder(tf.float32, [None, self.numClass], name="realLabels")
         self.realLabelsOneHot = tf.placeholder(tf.float32, [None, self.imgDim, self.imgDim, self.numClass], name="realLabelsOneHot")
         self.fakeLabels = tf.placeholder(tf.float32, [None, self.numClass], name="fakeLabels")
+        self.fakeLabelsOneHot = tf.placeholder(tf.float32, [None, self.imgDim, self.imgDim, self.numClass], name="fakeLabelsOneHot")
+
         self.epsilonph = tf.placeholder(tf.float32, [], name="epsilonph")
 
 
@@ -50,31 +54,39 @@ class Pipeline():
         self.Dis = Discriminator()
 
         # Get outputs
-        self.fakeX = self.Gen.forward(self.realX_fakeLabels)
-        recX = self.Gen.recForward(self.fakeX, self.realLabelsOneHot)
+        self.fakeX = self.Gen.recForward(self.realX, self.fakeLabelsOneHot)
         YSrc_real, self.YCls_real = self.Dis.forward(self.realX)
         YSrc_fake, YCls_fake = self.Dis.forward(self.fakeX)
 
         self.YCls_real = tf.squeeze(self.YCls_real)  # remove void dimensions
-        YCls_fake = tf.squeeze(YCls_fake) # remove void dimensions
 
 
 
 
         # Create D training pipeline
-        self.d_loss_real = tf.reduce_mean(YSrc_real)
+        self.d_loss_real = - tf.reduce_mean(YSrc_real)
         self.d_loss_fake = tf.reduce_mean(YSrc_fake)
-        self.d_loss_adv = self.d_loss_real - self.d_loss_fake
-        self.d_loss_cls = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.YCls_real,logits=self.realLabels, name="d_loss_cls") / self.batchSize)
+        self.d_loss_cls = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.realLabels,logits=self.YCls_real, name="d_loss_cls")) / self.batchSize
 
 
-        self.d_loss = - self.d_loss_adv + self.lambdaCls * self.d_loss_cls
+        self.d_loss = - self.d_loss_real + self.d_loss_fake + self.lambdaCls * self.d_loss_cls
         #TODO: review parameters
+
+        #-----------------accuracy--------------------------------------------------------------
+        YCls_real_sigmoid = tf.sigmoid(self.YCls_real)
+        predicted = tf.to_int32(YCls_real_sigmoid > 0.5)
+        labels = tf.to_int32(self.realLabels)
+        correct = tf.to_float(tf.equal(predicted, labels))
+        hundred = tf.constant(100.0)
+        self.accuracy = tf.reduce_mean(tf.cast(correct, tf.float32), axis=0) * hundred
+        #--------------------------------------------------------------------------------------
 
         vars = tf.trainable_variables()
         self.d_params = [v for v in vars if v.name.startswith('Discriminator/')]
         self.train_D = tf.train.AdamOptimizer(learning_rate=self.lrD, beta1=0.5, beta2=0.999)
         self.train_D_loss = self.train_D.minimize(self.d_loss, var_list=self.d_params)
+
+
 
 
         #-------------GRADIENT PENALTY---------------------------
@@ -93,12 +105,18 @@ class Pipeline():
         self.train_D_gp = self.train_D.minimize(self.d_loss_gp, var_list=self.d_params)
         #-------------------------------------------------------------------------------
 
-        self.train_D_gradLoss = self.train_D.compute_gradients(self.d_loss, var_list=self.d_params)
-
         # Create G training pipeline
-        g_loss_adv = - tf.reduce_mean(YSrc_fake) # TODO: review this
-        g_loss_cls = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=YCls_fake,logits=self.fakeLabels)) / self.batchSize
-        g_loss_rec = tf.reduce_mean(tf.abs(self.realX - recX))
+
+        fakeX = self.Gen.recForward(self.realX, self.fakeLabelsOneHot)
+        rec_x = self.Gen.recForward(fakeX,self.realLabelsOneHot)
+        out_src, out_cls = self.Dis.forward(self.fakeX)
+
+
+
+
+        g_loss_adv = - tf.reduce_mean(out_src) # TODO: review this
+        g_loss_cls = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.fakeLabels,logits=tf.squeeze(out_cls))) / self.batchSize
+        g_loss_rec = tf.reduce_mean(tf.abs(self.realX - rec_x))
         self.g_loss = g_loss_adv + self.lambdaCls * g_loss_cls + self.lambdaRec * g_loss_rec
         self.train_G = tf.train.AdamOptimizer(learning_rate=self.lrG, beta1=0.5, beta2=0.999)
         self.train_G_loss = self.train_G.minimize(self.g_loss)
@@ -120,9 +138,9 @@ class Pipeline():
         # -----------------------------------------------------------------------------------------
         images = []
         trueLabels = []
-
+        gloss = 0
         for e in range(self.epochs):
-            for filename in os.listdir(self.DBpath):
+            for i,filename in enumerate(os.listdir(self.DBpath)):
                 img = sci.imread(os.path.join(self.DBpath, filename))
                 splits = filename.split('_')
                 trueLabels.append(literal_eval(splits[1].split('.')[0]))
@@ -147,7 +165,7 @@ class Pipeline():
                     #print(np.mean(self.sess.run(self.d_params[4])))
 
 
-                    dloss, _ , _, d_loss_real, d_loss_fake, _gradient_penalty, d_loss_cls, YCls_real, gradLoss = self.sess.run(
+                    dloss, _ , _, d_loss_real, d_loss_fake, _gradient_penalty, d_loss_cls, YCls_real, accuracy = self.sess.run(
                                             [self.d_loss,
                                              self.train_D_loss,
                                              self.train_D_gp,
@@ -156,27 +174,27 @@ class Pipeline():
                                              self._gradient_penalty,
                                              self.d_loss_cls,
                                              self.YCls_real,
-                                             self.train_D_gradLoss],
+                                             self.accuracy],
                                             feed_dict={self.lrD: self.learningRateD,
                                                        self.realX_fakeLabels: imagesWithFakeLabels,
                                                        self.realLabels: trueLabels,
                                                        self.realX: np.stack(images),
                                                        self.fakeLabels: randomLabels,
+                                                       self.fakeLabelsOneHot: stackLabelsOnly(randomLabels),
                                                        self.epsilonph: epsilon})
-
 
 
                     if self.g_skip_count == self.g_skip_step:
                         # -----------------------------------------------------------------------------------------
                         # -----------------------------------TRAIN GENERATOR---------------------------------------
                         # -----------------------------------------------------------------------------------------
-
                         gloss, _ = self.sess.run([self.g_loss, self.train_G_loss],
                                                 feed_dict={self.lrG: self.learningRateG,
                                                            self.realX_fakeLabels: imagesWithFakeLabels,
                                                            self.realLabelsOneHot: stackLabelsOnly(trueLabels),
                                                            self.realX: np.stack(images),
-                                                           self.fakeLabels: randomLabels})
+                                                           self.fakeLabels: randomLabels,
+                                                           self.fakeLabelsOneHot: stackLabelsOnly(randomLabels)})
                         self.g_skip_count = 1
                     else:
                         self.g_skip_count+=1
@@ -186,10 +204,24 @@ class Pipeline():
                     trueLabels = []
 
                     #print("Loss = " , dloss + gloss, " ", "Dloss = " , dloss, " ", "Gloss = ", gloss, "Epoch =", e)
-                    print("Dloss = " , dloss, " d_loss_real: ", d_loss_real, " d_loss_fake: ", d_loss_fake, " gradient penalty: ", _gradient_penalty, " d_loss_cls: ", d_loss_cls)
+                    #print("Dloss = " , dloss, " d_loss_real: ", d_loss_real, " d_loss_fake: ", d_loss_fake, " gradient penalty: ", _gradient_penalty, " d_loss_cls: ", d_loss_cls)
                     #print("YCls_real: ")
                     #print(YCls_real)
                     #print([np.mean(i) for i in gradLoss])
+
+                    print("---------------------------")
+                    print("Picture: ", i, "Accuracy: ",accuracy, "Dloss = " , dloss, " d_loss_real: ", d_loss_real, " d_loss_fake: ", d_loss_fake, " gradient penalty: ", _gradient_penalty, " d_loss_cls: ", d_loss_cls)
+                    print("---------------------------")
+                    #save images
+                    if (i % 5 == 0):
+                        img = normalize(sci.imread(os.path.join(self.DBpath, "000001_[0, 0, 1, 0, 1].jpg")))
+                        labels = np.array([1, 0, 0, 0, 1])
+
+                        img = np.stack([img])
+                        generatedImage = np.squeeze(self.sess.run([self.fakeX], feed_dict={self.realX: np.stack(img),self.fakeLabelsOneHot: stackLabelsOnly([labels])}), axis=0)
+
+                        sci.imsave('samples/outfile' + str(i) + '.jpg', denormalize(generatedImage))
+
 
             if (e+1) >= self.epochsDecay:
                 self.lrD = self.lrDecaysD[0]
@@ -205,6 +237,9 @@ class Pipeline():
 
             elif e % self.epochsSave == 0:
                 self.saver.save(self.sess, self.modelPath)
+
+            #save samples every 500 images
+
 
 
 
