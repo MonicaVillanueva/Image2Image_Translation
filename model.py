@@ -1,8 +1,6 @@
 import tensorflow as tf
 import numpy as np
 
-# FLAG: use Instance normalization instead of batch normalization
-
 def _instance_norm(net, train=True):
     batch, rows, cols, channels = [i.value for i in net.get_shape()]
     var_shape = [channels]

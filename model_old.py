@@ -3,6 +3,13 @@ import numpy as np
 
 # FLAG: use Instance normalization instead of batch normalization
 
+def instance_norm(x):
+    epsilon = 1e-9
+
+    mean, var = tf.nn.moments(x, [1, 2], keep_dims=True)
+
+    return tf.div(x - mean, tf.sqrt(tf.add(var, epsilon)))
+
 initializer = tf.contrib.layers.xavier_initializer()
 
 def weight_variable(shape):
@@ -23,12 +30,12 @@ class ResidualBlock():
 
 	def forward(self, x):
 		Y1 = tf.nn.conv2d(x, self.residualBlock1_W, strides=[1, 1, 1, 1], padding='SAME')
-		Y1_norm = tf.contrib.layers.batch_norm(Y1)
+		Y1_norm = instance_norm(Y1)
 
 		Y1_relu = tf.nn.relu(Y1_norm)
 
 		Y2 = tf.nn.conv2d(Y1_relu, self.residualBlock2_W, strides=[1, 1, 1, 1], padding='SAME')
-		Y2_norm = tf.contrib.layers.batch_norm(Y2)
+		Y2_norm = instance_norm(Y2)
 
 		return x + Y2_norm
 
@@ -65,13 +72,13 @@ class Generator():
 			batch_size = tf.shape(X_G)[0]
 
 			Y_downSampling1 = tf.nn.relu(tf.nn.conv2d(X_G, self.downSampling1_W, strides=[1, 1, 1, 1], padding='SAME'))
-			Y_downSampling1_norm = tf.contrib.layers.batch_norm(Y_downSampling1)
+			Y_downSampling1_norm = instance_norm(Y_downSampling1)
 
 			Y_downSampling2 = tf.nn.relu(tf.nn.conv2d(Y_downSampling1_norm, self.downSampling2_W, strides=[1, 2, 2, 1], padding='SAME'))
-			Y_downSampling2_norm = tf.contrib.layers.batch_norm(Y_downSampling2)
+			Y_downSampling2_norm = instance_norm(Y_downSampling2)
 
 			Y_downSampling3 = tf.nn.relu(tf.nn.conv2d(Y_downSampling2_norm, self.downSampling3_W, strides=[1, 2, 2, 1], padding='SAME'))
-			Y_downSampling3_norm = tf.contrib.layers.batch_norm(Y_downSampling3)
+			Y_downSampling3_norm = instance_norm(Y_downSampling3)
 
 
 			Y_residual1 = self.residualBlock1.forward(Y_downSampling3_norm)
@@ -83,10 +90,10 @@ class Generator():
 
 
 			Y_upSampling1 = tf.nn.relu(tf.nn.conv2d_transpose(Y_residual6, self.upSampling1_W, [batch_size, int(self.imgDim[0]/2), int(self.imgDim[1]/2),128], strides=[1, 2, 2, 1], padding='SAME'))
-			Y_upSampling1_norm = tf.contrib.layers.batch_norm(Y_upSampling1)
+			Y_upSampling1_norm = instance_norm(Y_upSampling1)
 
 			Y_upSampling2 = tf.nn.relu(tf.nn.conv2d_transpose(Y_upSampling1_norm, self.upSampling2_W, [batch_size, self.imgDim[0], self.imgDim[1],64], strides=[1, 2, 2, 1], padding='SAME'))
-			Y_upSampling2_norm = tf.contrib.layers.batch_norm(Y_upSampling2)
+			Y_upSampling2_norm = instance_norm(Y_upSampling2)
 
 			fakeGeneration = tf.nn.tanh(tf.nn.conv2d(Y_upSampling2_norm, self.upSampling3_W, strides=[1, 1, 1, 1], padding='SAME'))
 

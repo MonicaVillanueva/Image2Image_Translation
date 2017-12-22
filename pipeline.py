@@ -268,3 +268,4 @@ class Pipeline():
 
             sci.imsave('outfile1.jpg', denormalize(generatedImage))
 
+
