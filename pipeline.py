@@ -259,8 +259,15 @@ class Pipeline():
             if labels is None:
                 labels = np.random.randint(2, size=(1, 5))
 
-            testImage = stackLabels([img], labels)
-            generatedImage = np.squeeze(self.sess.run([self.fakeX], feed_dict={self.realX_fakeLabels: testImage}))
+            # Get tensors
+            recov_fakeX = sess.graph.get_tensor_by_name("fakeX:0")
+            recov_realX = sess.graph.get_tensor_by_name("realX:0")
+            recov_fakeLabelsOneHot = sess.graph.get_tensor_by_name("fakeLabelsOneHot:0")
+
+            img = np.reshape(img, (1, 128, 128, 3))
+            generatedImage = np.squeeze(sess.run([recov_fakeX], feed_dict={recov_realX: np.stack(img),
+                                                                                recov_fakeLabelsOneHot: stackLabelsOnly(
+                                                                                   labels)}), axis=0)
 
             # sci.imsave('img.jpg', img)
             # img = normalize(img)
