@@ -10,21 +10,26 @@ import random
 import scipy.misc
 
 
+
+def ClipIfNotNone(grad):
+    if grad is None:
+        return grad
+    return tf.clip_by_value(grad, -1, 1)
+
 class Pipeline():
     def __init__(self):
         self.learningRateD = 0.0001
         self.learningRateG = 0.0001
-        self.DBpath = 'D:/processed'
+        self.DBpath = 'D:/processed/'
         self.graphPath = ''
         self.modelPath = 'model/model.ckpt'
         self.imgDim = 128
-        self.batchSize = 2
+        self.batchSize = 4
         self.numClass = 5
         self.lambdaCls = 1
         self.lambdaRec = 10
         self.lambdaGp = 10
-        self.g_skip_step = 5
-        self.g_skip_count = 1
+        self.g_skip_step = 10
         self.epochs = 10
         self.epochsDecay = 10
         self.epochsSave = 2
@@ -32,48 +37,64 @@ class Pipeline():
         self.lrDecaysD = self.lrDecaysD[1:]
         self.lrDecaysG = np.linspace(self.learningRateG,0,self.epochs-self.epochsDecay+2)
         self.lrDecaysG = self.lrDecaysG[1:]
+        self.clipD = 0.05
 
     def init_model(self):
         # Create the whole training graph
         self.realX = tf.placeholder(tf.float32, [None, self.imgDim, self.imgDim, 3], name="realX")
-        self.realX_fakeLabels = tf.placeholder(tf.float32, [None, self.imgDim, self.imgDim, 3 + self.numClass], name="realX_fakeLabels")
-
         self.realLabels = tf.placeholder(tf.float32, [None, self.numClass], name="realLabels")
         self.realLabelsOneHot = tf.placeholder(tf.float32, [None, self.imgDim, self.imgDim, self.numClass], name="realLabelsOneHot")
         self.fakeLabels = tf.placeholder(tf.float32, [None, self.numClass], name="fakeLabels")
         self.fakeLabelsOneHot = tf.placeholder(tf.float32, [None, self.imgDim, self.imgDim, self.numClass], name="fakeLabelsOneHot")
+        self.alphagp = tf.placeholder(tf.float32, [], name="alphagp")
 
-        self.epsilonph = tf.placeholder(tf.float32, [], name="epsilonph")
-
-
-        self.lrD = tf.placeholder(tf.float32)
-        self.lrG = tf.placeholder(tf.float32)
 
         # Initialize the generator and discriminator
         self.Gen = Generator()
         self.Dis = Discriminator()
 
-        # Get outputs
+
+
+        # -----------------------------------------------------------------------------------------
+        # -----------------------------------Create D training pipeline----------------------------
+        # -----------------------------------------------------------------------------------------
+
+        # Create fake image
         self.fakeX = self.Gen.recForward(self.realX, self.fakeLabelsOneHot)
-        YSrc_real, self.YCls_real = self.Dis.forward(self.realX)
+        YSrc_real, YCls_real = self.Dis.forward(self.realX)
         YSrc_fake, YCls_fake = self.Dis.forward(self.fakeX)
 
-        self.YCls_real = tf.squeeze(self.YCls_real)  # remove void dimensions
-
-
-
-
-        # Create D training pipeline
+        YCls_real = tf.squeeze(YCls_real)  # remove void dimensions
         self.d_loss_real = - tf.reduce_mean(YSrc_real)
         self.d_loss_fake = tf.reduce_mean(YSrc_fake)
-        self.d_loss_cls = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.realLabels,logits=self.YCls_real, name="d_loss_cls")) / self.batchSize
+        self.d_loss_cls = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.realLabels,logits=YCls_real, name="d_loss_cls")) / self.batchSize
 
 
-        self.d_loss = - self.d_loss_real + self.d_loss_fake + self.lambdaCls * self.d_loss_cls
-        #TODO: review parameters
+        #-------------GRADIENT PENALTY---------------------------
+        interpolates = self.alphagp * self.realX + (1 - self.alphagp) * self.fakeX
+
+        gradients = tf.gradients(self.Dis.forward(interpolates)[0], [interpolates])[0]
+        slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients), axis=[1,2,3]))
+        _gradient_penalty = tf.reduce_mean(tf.square(slopes - 1.0))
+        self.d_loss_gp = self.lambdaGp * _gradient_penalty
+        #self.train_D_gp = train_D.minimize(self.d_loss_gp, var_list=self.d_params)
+        # gvs = self.train_D.compute_gradients(self.d_loss_gp)
+        # capped_gvs = [(ClipIfNotNone(grad), var) for grad, var in gvs]
+        # self.train_D_gp = self.train_D.apply_gradients(capped_gvs)
+        #-------------------------------------------------------------------------------
+
+        #TOTAL LOSS
+        self.d_loss = self.d_loss_real + self.d_loss_fake + self.lambdaCls * self.d_loss_cls + self.d_loss_gp
+        vars = tf.trainable_variables()
+        self.d_params = [v for v in vars if v.name.startswith('Discriminator/')]
+        train_D = tf.train.AdamOptimizer(learning_rate=self.learningRateD, beta1=0.5, beta2=0.999)
+        self.train_D_loss = train_D.minimize(self.d_loss, var_list=self.d_params)
+        # gvs = self.train_D.compute_gradients(self.d_loss, var_list=self.d_params)
+        # capped_gvs = [(tf.clip_by_value(grad, -1., 1.), var) for grad, var in gvs]
+        # self.train_D_loss = self.train_D.apply_gradients(capped_gvs)
 
         #-----------------accuracy--------------------------------------------------------------
-        YCls_real_sigmoid = tf.sigmoid(self.YCls_real)
+        YCls_real_sigmoid = tf.sigmoid(YCls_real)
         predicted = tf.to_int32(YCls_real_sigmoid > 0.5)
         labels = tf.to_int32(self.realLabels)
         correct = tf.to_float(tf.equal(predicted, labels))
@@ -81,47 +102,32 @@ class Pipeline():
         self.accuracy = tf.reduce_mean(tf.cast(correct, tf.float32), axis=0) * hundred
         #--------------------------------------------------------------------------------------
 
-        vars = tf.trainable_variables()
-        self.d_params = [v for v in vars if v.name.startswith('Discriminator/')]
-        self.train_D = tf.train.AdamOptimizer(learning_rate=self.lrD, beta1=0.5, beta2=0.999)
-        self.train_D_loss = self.train_D.minimize(self.d_loss, var_list=self.d_params)
+
+        #CLIP D WEIGHTS
+        # theta_D is list of D's params
+        self.clip_D = [p.assign(tf.clip_by_value(p, -self.clipD, self.clipD)) for p in self.d_params]
 
 
+        # -----------------------------------------------------------------------------------------
+        # ----------------------------Create G training pipeline-----------------------------------
+        # -----------------------------------------------------------------------------------------
+        #original to target and target to original domain
+        #self.fakeX = self.Gen.recForward(self.realX, self.fakeLabelsOneHot)
+        rec_x = self.Gen.recForward(self.fakeX,self.realLabelsOneHot)
 
+        # compute losses
+        #out_src, out_cls = self.Dis.forward(self.fakeX)
+        self.g_loss_adv = - tf.reduce_mean(YSrc_fake)
+        self.g_loss_cls = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.fakeLabels,logits=tf.squeeze(YCls_fake))) / self.batchSize
 
-        #-------------GRADIENT PENALTY---------------------------
-        x_hat = self.epsilonph * self.realX + (1.0 - self.epsilonph) * self.fakeX
-
-        # gradient penalty
-        YSrc,_ = self.Dis.forward(x_hat)
-        gradients = tf.gradients(YSrc, [x_hat])[0]
-        gradients_shape = gradients.get_shape().as_list()
-        gradients_dim = np.prod(gradients_shape[1:])
-        gradients = tf.reshape(gradients, [-1, gradients_dim])
-        gradients_norm = tf.reduce_sum(gradients, axis=1)**2
-        self._gradient_penalty = tf.reduce_mean(tf.square(gradients_norm - 1.0))# unnecesary mean
-
-        self.d_loss_gp = self.lambdaGp * self._gradient_penalty
-        self.train_D_gp = self.train_D.minimize(self.d_loss_gp, var_list=self.d_params)
-        #-------------------------------------------------------------------------------
-
-        # Create G training pipeline
-
-        fakeX = self.Gen.recForward(self.realX, self.fakeLabelsOneHot)
-        rec_x = self.Gen.recForward(fakeX,self.realLabelsOneHot)
-        out_src, out_cls = self.Dis.forward(self.fakeX)
-
-
-
-
-        g_loss_adv = - tf.reduce_mean(out_src) # TODO: review this
-        g_loss_cls = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.fakeLabels,logits=tf.squeeze(out_cls))) / self.batchSize
-        g_loss_rec = tf.reduce_mean(tf.abs(self.realX - rec_x))
-        self.g_loss = g_loss_adv + self.lambdaCls * g_loss_cls + self.lambdaRec * g_loss_rec
-        self.train_G = tf.train.AdamOptimizer(learning_rate=self.lrG, beta1=0.5, beta2=0.999)
-        self.train_G_loss = self.train_G.minimize(self.g_loss)
-
-
+        self.g_loss_rec = tf.reduce_mean(tf.abs(self.realX - rec_x))
+        # total G loss and optimize
+        self.g_loss = self.g_loss_adv + self.lambdaCls * self.g_loss_cls + self.lambdaRec * self.g_loss_rec
+        train_G = tf.train.AdamOptimizer(learning_rate=self.learningRateG, beta1=0.5, beta2=0.999)
+        self.train_G_loss = train_G.minimize(self.g_loss)
+        # gvs = self.train_G.compute_gradients(self.g_loss)
+        # capped_gvs = [(tf.clip_by_value(grad, -1., 1.), var) for grad, var in gvs]
+        # self.train_G_loss = self.train_G.apply_gradients(capped_gvs)
 
         #TF session
         self.init = tf.global_variables_initializer()
@@ -139,8 +145,20 @@ class Pipeline():
         images = []
         trueLabels = []
         gloss = 0
+        g_loss_adv = 0
+        g_loss_cls = 0
+        g_loss_rec = 0
+        # test image
+        img_test = normalize(sci.imread(os.path.join(self.DBpath, "002000_[1, 0, 0, 1, 0].jpg")))
+        labels = np.array([0, 1, 0, 1, 0])
+        img_test = np.stack([img_test])
+        #----------------------------------------------
+        # -----------------------------------------------------------------------------------------
+        # -----------------------------------BEGIN TRAINING----------------------------------------
+        # -----------------------------------------------------------------------------------------
         for e in range(self.epochs):
-            for i,filename in enumerate(os.listdir(self.DBpath)):
+            index = 0
+            for filename in (os.listdir(self.DBpath)):
                 img = sci.imread(os.path.join(self.DBpath, filename))
                 splits = filename.split('_')
                 trueLabels.append(literal_eval(splits[1].split('.')[0]))
@@ -151,6 +169,7 @@ class Pipeline():
                     img = np.fliplr(img)
 
                 images.append(img)
+                #print(filename, np.mean(img))
                 if len(images) % self.batchSize == 0:
 
                     # Create fake labels and associated images
@@ -161,44 +180,66 @@ class Pipeline():
                     # -----------------------------------------------------------------------------------------
                     # -----------------------------------TRAIN DISCRIMINATOR-----------------------------------
                     # -----------------------------------------------------------------------------------------
+                    print("training discriminator...")
 
-                    #print(np.mean(self.sess.run(self.d_params[4])))
-
-
-                    dloss, _ , _, d_loss_real, d_loss_fake, _gradient_penalty, d_loss_cls, YCls_real, accuracy = self.sess.run(
-                                            [self.d_loss,
-                                             self.train_D_loss,
-                                             self.train_D_gp,
-                                             self.d_loss_real,
-                                             self.d_loss_fake,
-                                             self._gradient_penalty,
-                                             self.d_loss_cls,
-                                             self.YCls_real,
-                                             self.accuracy],
-                                            feed_dict={self.lrD: self.learningRateD,
-                                                       self.realX_fakeLabels: imagesWithFakeLabels,
+                    alpha = np.random.uniform(low=0, high=1.0)
+                    _ = self.sess.run([self.train_D_loss, self.clip_D],
+                                            feed_dict={
                                                        self.realLabels: trueLabels,
                                                        self.realX: np.stack(images),
                                                        self.fakeLabels: randomLabels,
                                                        self.fakeLabelsOneHot: stackLabelsOnly(randomLabels),
-                                                       self.epsilonph: epsilon})
+                                                       self.alphagp: alpha
+                                                       })
+
+                    # GRADIENT PENALTY
+                    # _ = self.sess.run([self.train_D_gp,],
+                    #                         feed_dict={
+                    #                                    self.realLabels: trueLabels,
+                    #                                    self.realX: np.stack(images),
+                    #                                    self.fakeLabels: randomLabels,
+                    #                                    self.fakeLabelsOneHot: stackLabelsOnly(randomLabels),
+                    #                                    self.alphagp: alpha
+                    #                                    })
 
 
-                    if self.g_skip_count == self.g_skip_step:
+                    if (index+1) % self.g_skip_step == 0:
                         # -----------------------------------------------------------------------------------------
                         # -----------------------------------TRAIN GENERATOR---------------------------------------
                         # -----------------------------------------------------------------------------------------
-                        gloss, _ = self.sess.run([self.g_loss, self.train_G_loss],
-                                                feed_dict={self.lrG: self.learningRateG,
-                                                           self.realX_fakeLabels: imagesWithFakeLabels,
+                        print("training generator...")
+                        _, = self.sess.run([self.train_G_loss],
+                                                feed_dict={
                                                            self.realLabelsOneHot: stackLabelsOnly(trueLabels),
                                                            self.realX: np.stack(images),
                                                            self.fakeLabels: randomLabels,
                                                            self.fakeLabelsOneHot: stackLabelsOnly(randomLabels)})
-                        self.g_skip_count = 1
-                    else:
-                        self.g_skip_count+=1
 
+
+                    # -----------------------------------------------------------------------------------------
+                    # -----------------------------------PRINTING LOSSES---------------------------------------
+                    # -----------------------------------------------------------------------------------------
+                    print("printing losses...")
+                    dloss, d_loss_real, d_loss_fake, d_loss_gp, d_loss_cls, accuracy, gloss, g_loss_adv, g_loss_cls, g_loss_rec = self.sess.run(
+                                            [
+                                             self.d_loss,
+                                             self.d_loss_real,
+                                             self.d_loss_fake,
+                                             self.d_loss_gp,
+                                             self.d_loss_cls,
+                                             self.accuracy,
+                                             self.g_loss,
+                                             self.g_loss_adv,
+                                             self.g_loss_cls,
+                                             self.g_loss_rec],
+                                            feed_dict={
+                                                       self.realLabels: trueLabels,
+                                                       self.realLabelsOneHot: stackLabelsOnly(trueLabels),
+                                                       self.realX: np.stack(images),
+                                                       self.fakeLabels: randomLabels,
+                                                       self.fakeLabelsOneHot: stackLabelsOnly(randomLabels),
+                                                       self.alphagp: alpha
+                                                       })
 
                     images = []
                     trueLabels = []
@@ -208,19 +249,20 @@ class Pipeline():
                     #print("YCls_real: ")
                     #print(YCls_real)
                     #print([np.mean(i) for i in gradLoss])
+                    print("---------------------------")
+                    print("Picture: ", index, "Accuracy: ",accuracy, "Dloss = " , dloss, " d_loss_real: ", d_loss_real, " d_loss_fake: ", d_loss_fake, " d_loss_gp: ", d_loss_gp, " d_loss_cls: ", d_loss_cls)
+                    print("Picture: ", index, "Accuracy: ",accuracy, "Gloss = ", gloss, "g_loss_Adv: ", g_loss_adv, "g_loss_cls: ", g_loss_cls, "g_loss_rec: ", g_loss_rec)
+
+                    #print("Picture: ", i, "Accuracy: ",accuracy, "Loss = " , dloss + gloss, " ", "Dloss = " , dloss, " ", "Gloss = ", gloss, "Epoch =", e)
 
                     print("---------------------------")
-                    print("Picture: ", i, "Accuracy: ",accuracy, "Dloss = " , dloss, " d_loss_real: ", d_loss_real, " d_loss_fake: ", d_loss_fake, " gradient penalty: ", _gradient_penalty, " d_loss_cls: ", d_loss_cls)
-                    print("---------------------------")
-                    #save images
-                    if (i % 5 == 0):
-                        img = normalize(sci.imread(os.path.join(self.DBpath, "000001_[0, 0, 1, 0, 1].jpg")))
-                        labels = np.array([1, 0, 0, 0, 1])
+                    index+=1
+                #save images
 
-                        img = np.stack([img])
-                        generatedImage = np.squeeze(self.sess.run([self.fakeX], feed_dict={self.realX: np.stack(img),self.fakeLabelsOneHot: stackLabelsOnly([labels])}), axis=0)
+                if (index % 50 == 0):
+                    generatedImage = np.squeeze(self.sess.run([self.fakeX], feed_dict={self.realX: img_test,self.fakeLabelsOneHot: stackLabelsOnly([labels])}), axis=0)
 
-                        sci.imsave('samples/outfile' + str(i) + '.jpg', denormalize(generatedImage))
+                    sci.imsave('D:/GANSProject/samples/outfile' + str(index) + '.jpg', denormalize(generatedImage))
 
 
             if (e+1) >= self.epochsDecay:
@@ -259,13 +301,18 @@ class Pipeline():
             if labels is None:
                 labels = np.random.randint(2, size=(1, 5))
 
-            testImage = stackLabels([img], labels)
-            generatedImage = np.squeeze(self.sess.run([self.fakeX], feed_dict={self.realX_fakeLabels: testImage}))
+            # Get tensors
+            recov_fakeX = sess.graph.get_tensor_by_name("fakeX:0")
+            recov_realX = sess.graph.get_tensor_by_name("realX:0")
+            recov_fakeLabelsOneHot = sess.graph.get_tensor_by_name("fakeLabelsOneHot:0")
+
+            img = np.reshape(img, (1, 128, 128, 3))
+            generatedImage = np.squeeze(sess.run([recov_fakeX], feed_dict={recov_realX: np.stack(img),
+                                                                                recov_fakeLabelsOneHot: stackLabelsOnly(
+                                                                                   labels)}), axis=0)
 
             # sci.imsave('img.jpg', img)
             # img = normalize(img)
             # sci.imsave('out.jpg', denormalize(img))
 
             sci.imsave('outfile1.jpg', denormalize(generatedImage))
-
-

@@ -1,6 +1,7 @@
 import tensorflow as tf
 import numpy as np
-
+from keras_contrib.layers.normalization import InstanceNormalization
+from tensorflow.contrib.layers.python.layers.normalization import instance_norm
 def _instance_norm(net, train=True):
     batch, rows, cols, channels = [i.value for i in net.get_shape()]
     var_shape = [channels]
@@ -13,20 +14,24 @@ def _instance_norm(net, train=True):
 
 class ResidualBlock():
 	"""Residual Block."""
-	def __init__(self, dim_in=256, dim_out=256):
-		self.Y1 = tf.layers.Conv2D(filters=dim_out, kernel_size=[3, 3], padding="same", activation=tf.nn.relu,use_bias=False, strides=1)
-		#self.Y1_norm = tf.layers.BatchNormalization()
-		self.Y2 = tf.layers.Conv2D(filters=dim_out, kernel_size=[3, 3], padding="same", activation=tf.nn.relu,use_bias=False, strides=1)
-		#self.Y2_norm = tf.layers.BatchNormalization()
+	def __init__(self, num, dim_in=256, dim_out=256):
+		self.Y1 = tf.layers.Conv2D(filters=dim_out, kernel_size=[3, 3], padding="same", activation=None,use_bias=False, strides=1)
+		self.Y2 = tf.layers.Conv2D(filters=dim_out, kernel_size=[3, 3], padding="same", activation=None,use_bias=False, strides=1)
+
+		self.num = num
 
 	def forward(self, x):
 		h = self.Y1(x)
-		h = _instance_norm(h)
+		with tf.variable_scope("Generator/ResBlock" + str(self.num) + "1"):
+			h = instance_norm(h, scale=False, epsilon=1e-5)
 		h = tf.nn.relu(h)
 		h = self.Y2(h)
-		h = _instance_norm(h)
+		with tf.variable_scope("Generator/ResBlock" + str(self.num) + "2"):
+			h = instance_norm(h, scale=False, epsilon=1e-5)
+		#h = tf.nn.relu(h)
 
 		return x + h
+
 
 class Generator():
 
@@ -34,42 +39,41 @@ class Generator():
 		with tf.variable_scope("Generator") as self.Gscope:
 			self.imgDim = imgDim
 
-			# FIXME PADDING P3...EN TF?
-			self.downSampling1 = tf.layers.Conv2D(filters=64,kernel_size=[7, 7],padding="same",activation=tf.nn.relu, use_bias=False, strides=1)
-			#self.downSampling1_norm = tf.layers.BatchNormalization()
+			self.downSampling1 = tf.layers.Conv2D(filters=64,kernel_size=[7, 7],padding="same",activation=None, use_bias=False, strides=1)
+			self.downSampling2 = tf.layers.Conv2D(filters=128,kernel_size=[4, 4],padding="same",activation=None, use_bias=False, strides=2)
+			self.downSampling3 = tf.layers.Conv2D(filters=256,kernel_size=[4, 4],padding="same",activation=None, use_bias=False, strides=2)
 
-			self.downSampling2 = tf.layers.Conv2D(filters=128,kernel_size=[4, 4],padding="same",activation=tf.nn.relu, use_bias=False, strides=2)
-			#self.downSampling2_norm = tf.layers.BatchNormalization()
+			self.residualBlock1 = ResidualBlock(num=1)
+			self.residualBlock2 = ResidualBlock(num=2)
+			self.residualBlock3 = ResidualBlock(num=3)
+			self.residualBlock4 = ResidualBlock(num=4)
+			self.residualBlock5 = ResidualBlock(num=5)
+			self.residualBlock6 = ResidualBlock(num=6)
 
-			self.downSampling3 = tf.layers.Conv2D(filters=256,kernel_size=[4, 4],padding="same",activation=tf.nn.relu, use_bias=False, strides=2)
-			#self.downSampling3_norm = tf.layers.BatchNormalization()
+			self.Y_upSampling1 = tf.layers.Conv2DTranspose(filters=128,kernel_size=[4, 4],padding="same",activation=None, use_bias=False, strides=2)
+			self.Y_upSampling2 = tf.layers.Conv2DTranspose(filters=64,kernel_size=[4, 4],padding="same",activation=None, use_bias=False, strides=2)
 
-			self.residualBlock1 = ResidualBlock()
-			self.residualBlock2 = ResidualBlock()
-			self.residualBlock3 = ResidualBlock()
-			self.residualBlock4 = ResidualBlock()
-			self.residualBlock5 = ResidualBlock()
-			self.residualBlock6 = ResidualBlock()
-
-			self.Y_upSampling1 = tf.layers.Conv2DTranspose(filters=128,kernel_size=[4, 4],padding="same",activation=tf.nn.relu, use_bias=False, strides=2)
-			#self.Y_upSampling1_norm = tf.layers.BatchNormalization()
-			self.Y_upSampling2 = tf.layers.Conv2DTranspose(filters=64,kernel_size=[4, 4],padding="same",activation=tf.nn.relu, use_bias=False, strides=2)
-			#self.Y_upSampling2_norm = tf.layers.BatchNormalization()
-
-			self.fakeGeneration = tf.layers.Conv2D(filters=3,kernel_size=[7, 7],padding="same",activation=tf.nn.tanh, use_bias=False, strides=1) #FIXME PADDING P3 IN TF...?
+			self.fakeGeneration = tf.layers.Conv2D(filters=3,kernel_size=[7, 7], padding="same",activation=tf.nn.tanh, use_bias=False, strides=1)
 
 
 
-	def forward(self, X_G):
+	def forward(self, x):
 		with tf.variable_scope(self.Gscope):
-			batch_size = tf.shape(X_G)[0]
+			h = self.downSampling1(x)
+			with tf.variable_scope("downSampling1_norm") as self.Gscope:
+				h = instance_norm(h, scale=False, epsilon=1e-5)
+			h = tf.nn.relu(h)
 
-			h = self.downSampling1(X_G)
-			h = _instance_norm(h)
 			h = self.downSampling2(h)
-			h = _instance_norm(h)
+			with tf.variable_scope("downSampling2_norm") as self.Gscope:
+				h = instance_norm(h, scale=False, epsilon=1e-5)
+			h = tf.nn.relu(h)
+
 			h = self.downSampling3(h)
-			h = _instance_norm(h)
+			with tf.variable_scope("downSampling3_norm") as self.Gscope:
+				h = instance_norm(h, scale=False, epsilon=1e-5)
+			h = tf.nn.relu(h)
+
 
 
 			h = self.residualBlock1.forward(h)
@@ -80,9 +84,17 @@ class Generator():
 			h = self.residualBlock6.forward(h)
 
 			h = self.Y_upSampling1(h)
-			h = _instance_norm(h)
+			with tf.variable_scope("Y_upSampling1_norm") as self.Gscope:
+				h = instance_norm(h, scale=True, epsilon=1e-5)
+			#h = self.Y_upSampling1_norm(h)
+			h = tf.nn.relu(h)
+
+
 			h = self.Y_upSampling2(h)
-			h = _instance_norm(h)
+			with tf.variable_scope("Y_upSampling2_norm") as self.Gscope:
+			 	h = instance_norm(h, scale=True, epsilon=1e-5)
+			h = tf.nn.relu(h)
+
 
 			return self.fakeGeneration(h)
 
@@ -100,17 +112,17 @@ class Discriminator():
 			self.imageSize = imageSize
 			currDim = convDim
 
-			self.InputLayer   = tf.layers.Conv2D(filters=currDim,kernel_size=[4, 4],padding="same",activation=tf.nn.leaky_relu, use_bias=True, strides=2)
+			self.InputLayer   = tf.layers.Conv2D(filters=currDim,kernel_size=[4, 4],padding="same",activation=None, use_bias=True, strides=2)
 
-			self.HiddenLayer1 = tf.layers.Conv2D(filters=currDim*2,kernel_size=[4, 4],padding="same",activation=tf.nn.leaky_relu, use_bias=True, strides=2)
+			self.HiddenLayer1 = tf.layers.Conv2D(filters=currDim*2,kernel_size=[4, 4],padding="same",activation=None, use_bias=True, strides=2)
 			currDim = currDim*2
-			self.HiddenLayer2 = tf.layers.Conv2D(filters=currDim*2,kernel_size=[4, 4],padding="same",activation=tf.nn.leaky_relu, use_bias=True, strides=2)
+			self.HiddenLayer2 = tf.layers.Conv2D(filters=currDim*2,kernel_size=[4, 4],padding="same",activation=None, use_bias=True, strides=2)
 			currDim = currDim*2
-			self.HiddenLayer3 = tf.layers.Conv2D(filters=currDim*2,kernel_size=[4, 4],padding="same",activation=tf.nn.leaky_relu, use_bias=True, strides=2)
+			self.HiddenLayer3 = tf.layers.Conv2D(filters=currDim*2,kernel_size=[4, 4],padding="same",activation=None, use_bias=True, strides=2)
 			currDim = currDim*2
-			self.HiddenLayer4 = tf.layers.Conv2D(filters=currDim*2,kernel_size=[4, 4],padding="same",activation=tf.nn.leaky_relu, use_bias=True, strides=2)
+			self.HiddenLayer4 = tf.layers.Conv2D(filters=currDim*2,kernel_size=[4, 4],padding="same",activation=None, use_bias=True, strides=2)
 			currDim = currDim*2
-			self.HiddenLayer5 = tf.layers.Conv2D(filters=currDim*2,kernel_size=[4, 4],padding="same",activation=tf.nn.leaky_relu, use_bias=True, strides=2)
+			self.HiddenLayer5 = tf.layers.Conv2D(filters=currDim*2,kernel_size=[4, 4],padding="same",activation=None, use_bias=True, strides=2)
 
 			self.OutputLayerSrc = tf.layers.Conv2D(filters=1,kernel_size=[3, 3],padding="same",activation=None, use_bias=False, strides=1)
 
@@ -119,13 +131,20 @@ class Discriminator():
 
 	def forward(self, x):
 		with tf.variable_scope(self.Dscope):
-
 			h = self.InputLayer(x)
+			h = tf.nn.leaky_relu(h, alpha=0.01)
+
 			h = self.HiddenLayer1(h)
+			h = tf.nn.leaky_relu(h, alpha=0.01)
 			h = self.HiddenLayer2(h)
+			h = tf.nn.leaky_relu(h, alpha=0.01)
 			h = self.HiddenLayer3(h)
+			h = tf.nn.leaky_relu(h, alpha=0.01)
 			h = self.HiddenLayer4(h)
+			h = tf.nn.leaky_relu(h, alpha=0.01)
 			h = self.HiddenLayer5(h)
+			h = tf.nn.leaky_relu(h, alpha=0.01)
+
 
 			YSrc = self.OutputLayerSrc(h)
 			YCls = self.OutputLayerCls(h)
