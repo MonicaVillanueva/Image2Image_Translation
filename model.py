@@ -28,7 +28,6 @@ class ResidualBlock():
 		h = self.Y2(h)
 		with tf.variable_scope("Generator/ResBlock" + str(self.num) + "2"):
 			h = instance_norm(h, scale=False, epsilon=1e-5)
-		#h = tf.nn.relu(h)
 
 		return x + h
 
@@ -86,7 +85,6 @@ class Generator():
 			h = self.Y_upSampling1(h)
 			with tf.variable_scope("Y_upSampling1_norm") as self.Gscope:
 				h = instance_norm(h, scale=True, epsilon=1e-5)
-			#h = self.Y_upSampling1_norm(h)
 			h = tf.nn.relu(h)
 
 
