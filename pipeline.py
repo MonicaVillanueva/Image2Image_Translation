@@ -34,8 +34,8 @@ class Pipeline():
         self.epochsDecay = 10
         self.logstep = 10
         self.epochsSave = 2
-        self.learningRateD = 0.00003
-        self.learningRateG = 0.00003
+        self.learningRateD = 0.00001
+        self.learningRateG = 0.00001
         self.lrDecaysD = np.linspace(self.learningRateD,0,self.epochs-self.epochsDecay+2)
         self.lrDecaysD = self.lrDecaysD[1:]
         self.lrDecaysG = np.linspace(self.learningRateG,0,self.epochs-self.epochsDecay+2)
@@ -352,3 +352,37 @@ class Pipeline():
             # sci.imsave('out.jpg', denormalize(img))
 
             sci.imsave('outfile1.jpg', denormalize(generatedImage))
+
+
+    def random_samples(self):
+
+        filenames = os.listdir(self.DBpath)
+        random_pics_idx = np.random.randint(low=0, high=len(filenames), size=10)
+        rows = []
+        for e in random_pics_idx:
+            img = np.stack([normalize(sci.imread(os.path.join(self.DBpath, filenames[e])))])
+            splits = filenames[e].split('_')
+            labels = literal_eval(splits[1].split('.')[0])
+
+            row_images = []
+            row_images.append(denormalize(np.squeeze(img)))
+            for j in range(0,len(labels)):
+                fakeLabels = np.copy(labels)
+                if j < 3: # hair label
+                    if fakeLabels[j] == 0:
+                        fakeLabels[0:3] = [0]*3
+                        fakeLabels[j] = 1
+                else:
+                    fakeLabels[j] = 0 if fakeLabels[j]==1 else 1
+
+                generatedImage = np.squeeze(self.sess.run([self.fakeX], feed_dict={self.realX: img,self.fakeLabelsOneHot: stackLabelsOnly([fakeLabels])}), axis=0)
+                row_images.append(denormalize(generatedImage))
+
+            row = np.concatenate(row_images, axis=1)
+            rows.append(row)
+        samples = np.concatenate(rows, axis=0)
+
+        sci.imsave('D:/GANSProject/samples/random_samples.jpg', samples)
+
+
+
